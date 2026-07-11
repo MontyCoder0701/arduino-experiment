@@ -1,0 +1,175 @@
+// UltimateAnimeCatClock.ino
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+
+// ==========================================
+//   HAND-CRAFTED ANIME PIXEL ART (16x16)
+// ==========================================
+
+// 1. Idle / Sitting (Giant eyes, tiny body, wagging tail)
+const unsigned char PROGMEM anime_sit1[] = {
+  0x0c,0x30,0x1e,0x78,0x3f,0xfc,0x7f,0xfe,0x76,0xee,0x79,0x9e,0x7f,0xfe,0x3f,0xfc,
+  0x1f,0xf8,0x0f,0xf0,0x0f,0xf0,0x1f,0xf8,0x1b,0xd8,0x11,0x88,0x1b,0xd8,0x00,0x00
+};
+const unsigned char PROGMEM anime_sit2[] = {
+  0x0c,0x30,0x1e,0x78,0x3f,0xfc,0x7f,0xfe,0x76,0xee,0x79,0x9e,0x7f,0xfe,0x3f,0xfc,
+  0x1f,0xf8,0x0f,0xf0,0x0f,0xf0,0x1f,0xf8,0x1b,0xd8,0x11,0x88,0x33,0xcc,0x20,0x04
+};
+
+// 2. Walking Right (Cute stubby legs moving)
+const unsigned char PROGMEM anime_walk_r1[] = {
+  0x03,0x00,0x07,0x80,0x0f,0xc0,0x1f,0xf0,0x3d,0xec,0x3e,0xbc,0x1f,0xfc,0x0f,0xfe,
+  0x07,0xff,0x03,0xff,0x03,0xff,0x01,0xff,0x01,0x6d,0x01,0x24,0x00,0x66,0x00,0x00
+};
+const unsigned char PROGMEM anime_walk_r2[] = {
+  0x03,0x00,0x07,0x80,0x0f,0xc0,0x1f,0xf0,0x3d,0xec,0x3e,0xbc,0x1f,0xfc,0x0f,0xfe,
+  0x07,0xff,0x03,0xff,0x03,0xff,0x01,0xff,0x02,0xdb,0x02,0x49,0x00,0x33,0x00,0x00
+};
+
+// 3. Walking Left
+const unsigned char PROGMEM anime_walk_l1[] = {
+  0x00,0xc0,0x01,0xe0,0x03,0xf0,0x0f,0xf8,0x37,0xbc,0x3d,0x7c,0x3f,0xf8,0x7f,0xf0,
+  0xff,0xe0,0xff,0xc0,0xff,0xc0,0xff,0x80,0xb6,0x80,0x24,0x80,0x66,0x00,0x00,0x00
+};
+const unsigned char PROGMEM anime_walk_l2[] = {
+  0x00,0xc0,0x01,0xe0,0x03,0xf0,0x0f,0xf8,0x37,0xbc,0x3d,0x7c,0x3f,0xf8,0x7f,0xf0,
+  0xff,0xe0,0xff,0xc0,0xff,0xc0,0xff,0x80,0xdb,0x40,0x49,0x40,0x33,0x00,0x00,0x00
+};
+
+// 4. Sleeping / Resting (Squinty happy eyes, relaxed body)
+const unsigned char PROGMEM anime_sleep[] = {
+  0x00,0x00,0x00,0x00,0x06,0x60,0x0f,0xf0,0x1f,0xf8,0x3f,0xfc,0x39,0x9c,0x3f,0xfc,
+  0x1f,0xf8,0x1f,0xf8,0x3f,0xfc,0x7f,0xfe,0x7f,0xfe,0x33,0xcc,0x00,0x00,0x00,0x00
+};
+
+// 5. Playing (Batting a tiny yarn ball)
+const unsigned char PROGMEM anime_play[] = {
+  0x0c,0x30,0x1e,0x78,0x3f,0xfc,0x7f,0xfe,0x76,0xee,0x79,0x9e,0x7f,0xfe,0x3f,0xfc,
+  0x1f,0xf8,0x1f,0xf0,0x0f,0xf8,0x1b,0xdc,0x31,0xce,0x23,0xc6,0x01,0xc0,0x00,0x00
+};
+
+// 6. Shocked / Dizzy (Classic anime spiral/X eyes)
+const unsigned char PROGMEM anime_shock[] = {
+  0x0c,0x30,0x1e,0x78,0x3f,0xfc,0x7f,0xfe,0x69,0x96,0x52,0x4a,0x7f,0xfe,0x3f,0xfc,
+  0x1f,0xf8,0x0f,0xf0,0x0f,0xf0,0x1f,0xf8,0x1b,0xd8,0x11,0x88,0x1b,0xd8,0x00,0x00
+};
+
+enum State { WALK_R, WALK_L, SIT, SLEEP, PLAY, SHOCKED };
+State state = SIT;
+
+int catX = 56;
+const int catY = 44; // Locks them perfectly to the bottom grassline
+unsigned long lastStateChange = 0;
+unsigned long lastFrameUpdate = 0;
+unsigned long lastClockUpdate = 0;
+bool animFrame = false;
+
+// --- TIME ENGINE SETTINGS ---
+int hours = 07;
+int minutes = 30;
+int seconds = 0;
+
+void setup() {
+  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
+  display.clearDisplay();
+  randomSeed(analogRead(A0));
+}
+
+void loop() {
+  unsigned long currentMillis = millis();
+
+  // 1. Clock Tracker Accuracy Engine
+  if (currentMillis - lastClockUpdate >= 1000) {
+    lastClockUpdate += 1000;
+    seconds++;
+    if (seconds >= 60) {
+      seconds = 0; minutes++;
+      if (minutes >= 60) {
+        minutes = 0; hours++;
+        if (hours >= 24) hours = 0;
+      }
+    }
+  }
+
+  // 2. Frame Swapper (320ms gives the perfect slow kawaii bop)
+  if (currentMillis - lastFrameUpdate > 320) {
+    animFrame = !animFrame;
+    lastFrameUpdate = currentMillis;
+  }
+
+  // 3. Random State Machine (Switches up actions every 4.5 seconds)
+  if (currentMillis - lastStateChange > 4500) {
+    state = (State)random(6);
+    lastStateChange = currentMillis;
+  }
+
+  // 4. Position Physics
+  if (state == WALK_R) {
+    catX++;
+    if (catX > 112) state = WALK_L;
+  }
+  if (state == WALK_L) {
+    catX--;
+    if (catX < 0) state = WALK_R;
+  }
+
+  // ==========================================
+  //   RENDER SCREEN
+  // ==========================================
+  display.clearDisplay();
+
+  // Draw Time Bar 
+  display.setTextSize(2);
+  display.setTextColor(WHITE);
+  display.setCursor(16, 4);
+  if (hours < 10) display.print('0');   display.print(hours);   display.print(':');
+  if (minutes < 10) display.print('0'); display.print(minutes); display.print(':');
+  if (seconds < 10) display.print('0'); display.print(seconds);
+
+  // Draw Floor Ground Line
+  display.drawLine(0, 60, 128, 60, WHITE);
+
+  // Switch Art Sprites based on active status
+  switch (state) {
+    case SIT:
+      display.drawBitmap(catX, catY, animFrame ? anime_sit1 : anime_sit2, 16, 16, WHITE);
+      break;
+      
+    case WALK_R:
+      display.drawBitmap(catX, catY, animFrame ? anime_walk_r1 : anime_walk_r2, 16, 16, WHITE);
+      break;
+      
+    case WALK_L:
+      display.drawBitmap(catX, catY, animFrame ? anime_walk_l1 : anime_walk_l2, 16, 16, WHITE);
+      break;
+      
+    case SLEEP:
+      display.drawBitmap(catX, catY, anime_sleep, 16, 16, WHITE);
+      // Sweaty/Zz marks floating up
+      display.setTextSize(1);
+      display.setCursor(catX + 18, catY - (animFrame ? 4 : 2));
+      display.print("zZ");
+      break;
+
+    case PLAY:
+      display.drawBitmap(catX, catY, anime_play, 16, 16, WHITE);
+      // Small pixel ball rolling in front of cat
+      display.fillCircle(catX - 4, catY + 12 + (animFrame ? -1 : 0), 2, WHITE);
+      break;
+
+    case SHOCKED:
+      display.drawBitmap(catX, catY, anime_shock, 16, 16, WHITE);
+      // Anime exclamation marks!
+      display.setCursor(catX + 6, catY - 8);
+      display.print("!!");
+      break;
+  }
+
+  display.display();
+  delay(20);
+}
