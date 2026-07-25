@@ -5,7 +5,8 @@
 //   single press  -> pet the dog
 //   double press  -> feed the dog
 //   hold 3 seconds -> show hunger / care gauges
-//   hold 5 seconds -> wipe memory and start a brand-new dog
+//   hold 5 seconds -> turn OFF (hold 5s again to turn back ON)
+//   hold 10 seconds -> wipe memory and start a brand-new dog
 #include <Wire.h>
 #include <EEPROM.h>
 #include <Adafruit_GFX.h>
@@ -247,11 +248,13 @@ const unsigned long DAY_MS = 86400000UL;   // one powered-on day
 // --- BUTTON ENGINE ---
 // single tap = pet, double tap = feed
 // hold 3s = show hunger/care gauges
-// hold 5s = full reset
+// hold 5s = power toggle (off / on)
+// hold 10s = full reset
 const unsigned long DEBOUNCE_MS = 40;
 const unsigned long DOUBLE_GAP_MS = 600;
-const unsigned long STATS_HOLD_MS = 3000;  // show gauges
-const unsigned long LONG_PRESS_MS = 5000;  // factory reset
+const unsigned long STATS_HOLD_MS = 3000;   // show gauges
+const unsigned long POWER_HOLD_MS = 5000;   // turn off / on
+const unsigned long LONG_PRESS_MS = 10000;  // factory reset
 bool rawButton = HIGH;
 bool stableButton = HIGH;
 unsigned long lastButtonEdge = 0;
@@ -263,6 +266,7 @@ bool longPressDone = false;
 bool showingReset = false;
 bool showingLevelUp = false;
 unsigned long levelUpUntil = 0;
+bool powerOn = true;         // false = screen off / sleeping deeply
 
 // --- EEPROM (survives power-off) ---
 const uint8_t EEPROM_MAGIC = 0xC9; // bumped for care-style fields
@@ -427,6 +431,29 @@ void factoryReset(unsigned long now) {
   startAction(HAPPY, now);
 }
 
+// 5s hold flips the dog between awake and a low-power "off" screen.
+void togglePower(unsigned long now) {
+  powerOn = !powerOn;
+  longPressDone = true;   // consume this hold, ignore as tap
+  clickCount = 0;
+  holdMs = 0;
+  if (!powerOn) {
+    // Freeze the dog and blank the panel to save power.
+    if (stateDirty) saveState();
+    display.clearDisplay();
+    display.display();
+  } else {
+    // Waking up: don't punish the dog for the time it was off.
+    lastAgeDayAt = now;
+    lastFunDrain = now;
+    lastFoodDrain = now;
+    lastIdleChange = now;
+    lastInteractAt = now;
+    lastFrameUpdate = now;
+    startAction(HAPPY, now);
+  }
+}
+
 void setup() {
   pinMode(BUTTON_PIN, INPUT_PULLUP);
   pinMode(LED_BUILTIN, OUTPUT);
@@ -553,9 +580,14 @@ void readButton(unsigned long now) {
     } else {
       unsigned long held = now - holdStartedAt;
       holdMs = 0;
-      // Stats hold or reset hold should not count as pet/feed.
-      if (longPressDone || held >= STATS_HOLD_MS) {
+      // Long holds are commands, not pet/feed taps.
+      if (longPressDone) {
+        clickCount = 0;               // reset already fired live
+      } else if (held >= POWER_HOLD_MS) {
+        togglePower(now);             // 5s release -> flip on/off
         clickCount = 0;
+      } else if (held >= STATS_HOLD_MS) {
+        clickCount = 0;               // was just peeking at gauges
       } else {
         clickCount++;
         lastClickAt = now;
@@ -569,7 +601,8 @@ void readButton(unsigned long now) {
     holdMs = 0;
   }
 
-  if (stableButton == LOW && !longPressDone && holdMs >= LONG_PRESS_MS) {
+  // Full reset only while awake, needs a very long 10s hold.
+  if (powerOn && stableButton == LOW && !longPressDone && holdMs >= LONG_PRESS_MS) {
     longPressDone = true;
     holdMs = 0;
     clickCount = 0;
@@ -725,8 +758,11 @@ const char *statusText() {
     return flashStatus(PSTR("GOOD DOG!!"));
   }
   if (showingReset) return flashStatus(PSTR("uhhh... who am i"));
-  if (holdMs >= STATS_HOLD_MS && holdMs < LONG_PRESS_MS) {
-    return flashStatus(PSTR("hold to reset"));
+  if (holdMs >= POWER_HOLD_MS && holdMs < LONG_PRESS_MS) {
+    return flashStatus(PSTR("keep hold: reset"));
+  }
+  if (holdMs >= STATS_HOLD_MS && holdMs < POWER_HOLD_MS) {
+    return flashStatus(PSTR("release: turn off"));
   }
   if (showingBonk) return flashStatus(PSTR("BONK"));
 
@@ -905,6 +941,12 @@ void drawBonkStars(int x, int y) {
 void loop() {
   unsigned long currentMillis = millis();
 
+  // While "off": keep the screen blank, only watch for a 5s hold to wake up.
+  if (!powerOn) {
+    readButton(currentMillis);
+    return;
+  }
+
   // Count age while powered and preserve completed days in EEPROM.
   if (currentMillis - lastAgeDayAt >= DAY_MS) {
     lastAgeDayAt += DAY_MS;
@@ -1050,10 +1092,11 @@ void loop() {
     printCentered(showStats ? 42 : 27, statusText());
   }
 
-  // After 3s, remaining hold fills toward factory reset at 5s
+  // 3s..5s fills toward power-off; 5s..10s fills toward factory reset.
   if (holdMs >= STATS_HOLD_MS && holdMs < LONG_PRESS_MS) {
-    unsigned long span = LONG_PRESS_MS - STATS_HOLD_MS;
-    int fillW = (int)(((holdMs - STATS_HOLD_MS) * 100UL) / span);
+    unsigned long start = (holdMs < POWER_HOLD_MS) ? STATS_HOLD_MS : POWER_HOLD_MS;
+    unsigned long end = (holdMs < POWER_HOLD_MS) ? POWER_HOLD_MS : LONG_PRESS_MS;
+    int fillW = (int)(((holdMs - start) * 100UL) / (end - start));
     if (fillW > 100) fillW = 100;
     display.drawRect(14, 50, 100, 4, WHITE);
     if (fillW > 0) display.fillRect(14, 50, fillW, 4, WHITE);
