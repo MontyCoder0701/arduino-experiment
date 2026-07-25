@@ -279,7 +279,9 @@ unsigned long lastAgeDayAt = 0;
 
 // --- LEVEL / GROWTH ---
 const uint8_t MAX_DOG_LEVEL = 5;
-const uint8_t CARE_PER_LEVEL = 3; // need this many pets AND feeds to level up
+// Base care needed at Lv1->2; each next level adds CARE_LEVEL_STEP more pets AND feeds.
+const uint8_t CARE_BASE = 6;
+const uint8_t CARE_LEVEL_STEP = 3;
 uint8_t dogLevel = 1;
 uint8_t petsSinceLevel = 0;
 uint8_t feedsSinceLevel = 0;
@@ -433,7 +435,9 @@ void noteInteraction(unsigned long now) {
 
 void tryLevelUp(unsigned long now) {
   if (dogLevel >= MAX_DOG_LEVEL) return;
-  if (petsSinceLevel < CARE_PER_LEVEL || feedsSinceLevel < CARE_PER_LEVEL) return;
+  // Higher levels need more consistent petting AND feeding.
+  uint8_t need = CARE_BASE + (uint8_t)((dogLevel - 1) * CARE_LEVEL_STEP);
+  if (petsSinceLevel < need || feedsSinceLevel < need) return;
 
   dogLevel++;
   petsSinceLevel = 0;
