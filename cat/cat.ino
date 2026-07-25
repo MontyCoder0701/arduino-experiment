@@ -2,8 +2,9 @@
 //
 // Virtual dog pet with two needs: PLAY and FOOD.
 // Wiring: one push button between D2 and GND (uses the internal pull-up).
-//   single press  -> play with the dog
+//   single press  -> pet the dog
 //   double press  -> feed the dog
+//   hold 3 seconds -> show hunger / care gauges
 //   hold 5 seconds -> wipe memory and start a brand-new dog
 #include <Wire.h>
 #include <EEPROM.h>
