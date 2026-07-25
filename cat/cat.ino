@@ -431,18 +431,21 @@ void factoryReset(unsigned long now) {
   startAction(HAPPY, now);
 }
 
-// 5s hold flips the dog between awake and a low-power "off" screen.
+// 5s hold: real OLED sleep (panel off), not a soft pause.
 void togglePower(unsigned long now) {
   powerOn = !powerOn;
   longPressDone = true;   // consume this hold, ignore as tap
   clickCount = 0;
   holdMs = 0;
   if (!powerOn) {
-    // Freeze the dog and blank the panel to save power.
     if (stateDirty) saveState();
     display.clearDisplay();
     display.display();
+    // Hardware display sleep — pixels + charge pump off.
+    display.ssd1306_command(SSD1306_DISPLAYOFF);
+    digitalWrite(LED_BUILTIN, LOW);
   } else {
+    display.ssd1306_command(SSD1306_DISPLAYON);
     // Waking up: don't punish the dog for the time it was off.
     lastAgeDayAt = now;
     lastFunDrain = now;
@@ -941,9 +944,10 @@ void drawBonkStars(int x, int y) {
 void loop() {
   unsigned long currentMillis = millis();
 
-  // While "off": keep the screen blank, only watch for a 5s hold to wake up.
+  // While off: OLED is asleep; only poll the button slowly for a 5s wake hold.
   if (!powerOn) {
     readButton(currentMillis);
+    delay(50);
     return;
   }
 
