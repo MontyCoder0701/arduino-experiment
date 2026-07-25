@@ -257,9 +257,11 @@ unsigned long holdStartedAt = 0;
 unsigned long holdMs = 0; // how long the button is currently held
 bool longPressDone = false;
 bool showingReset = false;
+bool showingLevelUp = false;
+unsigned long levelUpUntil = 0;
 
 // --- EEPROM (survives power-off) ---
-const uint8_t EEPROM_MAGIC = 0xC7;
+const uint8_t EEPROM_MAGIC = 0xC8; // bumped when level fields were added
 const int EEPROM_ADDR_MAGIC = 0;
 const int EEPROM_ADDR_FUN = 1;
 const int EEPROM_ADDR_FOOD = 2;
@@ -267,10 +269,20 @@ const int EEPROM_ADDR_CATX = 3;
 const int EEPROM_ADDR_NAME = 4;
 const int EEPROM_ADDR_AGE_LOW = 5;
 const int EEPROM_ADDR_AGE_HIGH = 6;
+const int EEPROM_ADDR_LEVEL = 7;
+const int EEPROM_ADDR_PETS = 8;
+const int EEPROM_ADDR_FEEDS = 9;
 const unsigned long SAVE_MS = 2000; // write at most every 2s when dirty
 bool stateDirty = false;
 unsigned long lastSave = 0;
 unsigned long lastAgeDayAt = 0;
+
+// --- LEVEL / GROWTH ---
+const uint8_t MAX_DOG_LEVEL = 5;
+const uint8_t CARE_PER_LEVEL = 3; // need this many pets AND feeds to level up
+uint8_t dogLevel = 1;
+uint8_t petsSinceLevel = 0;
+uint8_t feedsSinceLevel = 0;
 
 const char NAME_0[] PROGMEM = "Bonk";
 const char NAME_1[] PROGMEM = "Doof";
@@ -311,6 +323,9 @@ void saveState() {
   EEPROM.update(EEPROM_ADDR_NAME, nameIndex);
   EEPROM.update(EEPROM_ADDR_AGE_LOW, lowByte(ageDays));
   EEPROM.update(EEPROM_ADDR_AGE_HIGH, highByte(ageDays));
+  EEPROM.update(EEPROM_ADDR_LEVEL, dogLevel);
+  EEPROM.update(EEPROM_ADDR_PETS, petsSinceLevel);
+  EEPROM.update(EEPROM_ADDR_FEEDS, feedsSinceLevel);
   stateDirty = false;
   lastSave = millis();
 }
@@ -319,6 +334,9 @@ void loadState() {
   if (EEPROM.read(EEPROM_ADDR_MAGIC) != EEPROM_MAGIC) {
     nameIndex = random(DOG_NAME_COUNT);
     ageDays = 1;
+    dogLevel = 1;
+    petsSinceLevel = 0;
+    feedsSinceLevel = 0;
     loadDogName(nameIndex);
     saveState(); // first boot: store defaults
     return;
@@ -342,6 +360,14 @@ void loadState() {
     ageDays = 1;
     markDirty();
   }
+
+  dogLevel = EEPROM.read(EEPROM_ADDR_LEVEL);
+  if (dogLevel < 1 || dogLevel > MAX_DOG_LEVEL) {
+    dogLevel = 1;
+    markDirty();
+  }
+  petsSinceLevel = EEPROM.read(EEPROM_ADDR_PETS);
+  feedsSinceLevel = EEPROM.read(EEPROM_ADDR_FEEDS);
 }
 
 void markDirty() {
@@ -361,6 +387,10 @@ void factoryReset(unsigned long now) {
   lastIdleChange = now;
   nameIndex = random(DOG_NAME_COUNT);
   ageDays = 1;
+  dogLevel = 1;
+  petsSinceLevel = 0;
+  feedsSinceLevel = 0;
+  showingLevelUp = false;
   clickCount = 0;
   showingReset = true;
   loadDogName(nameIndex);
@@ -401,6 +431,20 @@ void noteInteraction(unsigned long now) {
   lastInteractAt = now;
 }
 
+void tryLevelUp(unsigned long now) {
+  if (dogLevel >= MAX_DOG_LEVEL) return;
+  if (petsSinceLevel < CARE_PER_LEVEL || feedsSinceLevel < CARE_PER_LEVEL) return;
+
+  dogLevel++;
+  petsSinceLevel = 0;
+  feedsSinceLevel = 0;
+  showingLevelUp = true;
+  levelUpUntil = now + 2400;
+  markDirty();
+  saveState();
+  startAction(HAPPY, now);
+}
+
 void startAction(Pose p, unsigned long now) {
   actionPose = p;
   actionUntil = now + ACTION_MS;
@@ -425,9 +469,11 @@ void playWithDog(unsigned long now) {
   }
   fun = clampLevel(fun + 20);
   food = clampLevel(food - 1);
+  if (petsSinceLevel < 255) petsSinceLevel++;
   markDirty();
   saveState();
   startAction(PLAYING, now);
+  tryLevelUp(now);
 }
 
 void feedDog(unsigned long now) {
@@ -440,9 +486,11 @@ void feedDog(unsigned long now) {
   }
   food = clampLevel(food + 24);
   fun = clampLevel(fun + 4); // dinner is its own kind of fun
+  if (feedsSinceLevel < 255) feedsSinceLevel++;
   markDirty();
   saveState();
   startAction(EATING, now);
+  tryLevelUp(now);
 }
 
 void readButton(unsigned long now) {
@@ -514,10 +562,10 @@ void drawPetHeader() {
   display.setCursor(0, 0);
   display.print(nameBuf);
 
-  char ageText[12];
-  snprintf(ageText, sizeof(ageText), "Day %u", ageDays);
-  display.setCursor(SCREEN_WIDTH - strlen(ageText) * 6, 0);
-  display.print(ageText);
+  char meta[18];
+  snprintf(meta, sizeof(meta), "Day%u Lv%u", ageDays, dogLevel);
+  display.setCursor(SCREEN_WIDTH - strlen(meta) * 6, 0);
+  display.print(meta);
 }
 
 void printCentered(int y, const char *text) {
@@ -567,6 +615,7 @@ const char *flashStatus(const char *p) {
 }
 
 const char *statusText() {
+  if (showingLevelUp) return flashStatus(PSTR("LEVEL UP!!"));
   if (showingReset) return flashStatus(PSTR("uhhh... who am i"));
   if (holdMs >= HOLD_HINT_MS) return flashStatus(PSTR("hold to reset"));
   if (showingBonk) return flashStatus(PSTR("BONK"));
@@ -591,8 +640,46 @@ const char *statusText() {
   }
 }
 
+void drawLevelLook(int x, int y) {
+  // Growing drip: accessories unlock with consistent care.
+  if (dogLevel >= 2) {
+    // Collar + tag
+    display.drawLine(x + 8, y + 12, x + 22, y + 12, WHITE);
+    display.fillRect(x + 14, y + 11, 3, 3, WHITE);
+  }
+  if (dogLevel >= 3) {
+    // Bandana flap
+    display.drawLine(x + 6, y + 11, x + 11, y + 11, WHITE);
+    display.drawPixel(x + 7, y + 13, WHITE);
+    display.drawPixel(x + 8, y + 14, WHITE);
+    display.drawPixel(x + 9, y + 13, WHITE);
+  }
+  if (dogLevel >= 4) {
+    // Party hat
+    display.drawLine(x + 10, y + 1, x + 14, y - 5, WHITE);
+    display.drawLine(x + 18, y + 1, x + 14, y - 5, WHITE);
+    display.drawLine(x + 10, y + 1, x + 18, y + 1, WHITE);
+    display.drawPixel(x + 14, y - 6, WHITE);
+  }
+  if (dogLevel >= 5) {
+    // Crown + sparkles for max goof royalty
+    display.fillRect(x + 9, y - 2, 12, 3, WHITE);
+    display.drawPixel(x + 11, y - 4, WHITE);
+    display.drawPixel(x + 14, y - 5, WHITE);
+    display.drawPixel(x + 17, y - 4, WHITE);
+    if (animFrame) {
+      display.drawPixel(x + 1, y + 3, WHITE);
+      display.drawPixel(x + 29, y + 5, WHITE);
+      display.drawPixel(x + 4, y - 1, WHITE);
+    }
+  }
+}
+
 void drawDog(int x, int y, const unsigned char *bitmap) {
-  display.drawBitmap(x, y, bitmap, SPRITE_W, SPRITE_H, WHITE);
+  // Lv1 pup sits a little lower / smaller vibe
+  int dy = (dogLevel == 1) ? 2 : ((dogLevel >= 4) ? -1 : 0);
+  display.drawBitmap(x, y + dy, bitmap, SPRITE_W, SPRITE_H, WHITE);
+  drawLevelLook(x, y + dy);
 }
 
 void drawPant(int x, int y) {
@@ -676,6 +763,10 @@ void loop() {
       idlePose = IDLE_CHOICES[random(IDLE_CHOICE_COUNT)];
     }
     lastIdleChange = currentMillis;
+  }
+
+  if (showingLevelUp && currentMillis >= levelUpUntil) {
+    showingLevelUp = false;
   }
 
   if (showingBonk && currentMillis >= bonkUntil) {
