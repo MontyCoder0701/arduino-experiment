@@ -270,13 +270,30 @@ bool stateDirty = false;
 unsigned long lastSave = 0;
 unsigned long lastAgeDayAt = 0;
 
-const char *const DOG_NAMES[] = {
-  "Bonk", "Doof", "Goof", "Blob", "Chonk",
-  "Boop", "Derp", "Potato", "Bean", "Dummy"
+const char NAME_0[] PROGMEM = "Bonk";
+const char NAME_1[] PROGMEM = "Doof";
+const char NAME_2[] PROGMEM = "Goof";
+const char NAME_3[] PROGMEM = "Blob";
+const char NAME_4[] PROGMEM = "Chonk";
+const char NAME_5[] PROGMEM = "Boop";
+const char NAME_6[] PROGMEM = "Derp";
+const char NAME_7[] PROGMEM = "Potato";
+const char NAME_8[] PROGMEM = "Bean";
+const char NAME_9[] PROGMEM = "Dummy";
+const char *const DOG_NAMES[] PROGMEM = {
+  NAME_0, NAME_1, NAME_2, NAME_3, NAME_4,
+  NAME_5, NAME_6, NAME_7, NAME_8, NAME_9
 };
-const uint8_t DOG_NAME_COUNT = sizeof(DOG_NAMES) / sizeof(DOG_NAMES[0]);
+const uint8_t DOG_NAME_COUNT = 10;
 uint8_t nameIndex = 0;
 uint16_t ageDays = 1;
+char statusBuf[22]; // reusable RAM for captions copied from flash
+char nameBuf[12];
+
+void loadDogName(uint8_t index) {
+  if (index >= DOG_NAME_COUNT) index = 0;
+  strcpy_P(nameBuf, (PGM_P)pgm_read_word(&DOG_NAMES[index]));
+}
 
 int clampLevel(int value) {
   if (value < 0) return 0;
@@ -300,6 +317,7 @@ void loadState() {
   if (EEPROM.read(EEPROM_ADDR_MAGIC) != EEPROM_MAGIC) {
     nameIndex = random(DOG_NAME_COUNT);
     ageDays = 1;
+    loadDogName(nameIndex);
     saveState(); // first boot: store defaults
     return;
   }
@@ -312,6 +330,7 @@ void loadState() {
     nameIndex = random(DOG_NAME_COUNT);
     markDirty();
   }
+  loadDogName(nameIndex);
 
   ageDays = word(
     EEPROM.read(EEPROM_ADDR_AGE_HIGH),
@@ -342,16 +361,37 @@ void factoryReset(unsigned long now) {
   ageDays = 1;
   clickCount = 0;
   showingReset = true;
+  loadDogName(nameIndex);
   saveState();
   startAction(HAPPY, now);
 }
 
 void setup() {
   pinMode(BUTTON_PIN, INPUT_PULLUP);
-  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
+  pinMode(LED_BUILTIN, OUTPUT);
+  digitalWrite(LED_BUILTIN, LOW);
+
+  // Same OLED bring-up path as the working hello_world test
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    while (true) {
+      digitalWrite(LED_BUILTIN, HIGH);
+      delay(100);
+      digitalWrite(LED_BUILTIN, LOW);
+      delay(100);
+    }
+  }
+
   display.clearDisplay();
+  display.setTextColor(WHITE);
+  display.setTextSize(1);
+  display.setCursor(0, 0);
+  display.print(F("boop..."));
+  display.display();
+  delay(250);
+
   randomSeed(analogRead(A0));
   loadState();
+  loadDogName(nameIndex);
 }
 
 void startAction(Pose p, unsigned long now) {
@@ -462,7 +502,7 @@ void drawGauge(int y, const char *label, int value, bool blink) {
 void drawPetHeader() {
   display.setTextSize(1);
   display.setCursor(0, 0);
-  display.print(DOG_NAMES[nameIndex]);
+  display.print(nameBuf);
 
   char ageText[12];
   snprintf(ageText, sizeof(ageText), "Day %u", ageDays);
@@ -509,38 +549,57 @@ void drawBowl(int x, int y, bool full) {
   if (full) display.drawLine(x + 2, y + 2, x + 7, y + 2, WHITE);
 }
 
-const char *statusText() {
-  if (showingReset) return "uhhh... who am i";
-  if (holdMs >= HOLD_HINT_MS) return "wait what are u-";
-  if (showingBonk) return "BONK";
+// Copy a flash string into statusBuf and return it (keeps captions out of SRAM).
+const char *flashStatus(const char *p) {
+  strncpy_P(statusBuf, p, sizeof(statusBuf) - 1);
+  statusBuf[sizeof(statusBuf) - 1] = 0;
+  return statusBuf;
+}
 
-  static const char *const SIT_LINES[] = {
-    "i forgor", "brain empty", "staring...", "huh??", "............"
-  };
-  static const char *const WALK_LINES[] = {
-    "where go", "lost already", "step step?", "wait. wall."
-  };
-  static const char *const HAPPY_LINES[] = {
-    "hehehe", "i am soup", "wag forever", "silly mode"
-  };
+const char *statusText() {
+  if (showingReset) return flashStatus(PSTR("uhhh... who am i"));
+  if (holdMs >= HOLD_HINT_MS) return flashStatus(PSTR("wait what are u-"));
+  if (showingBonk) return flashStatus(PSTR("BONK"));
 
   switch (pose) {
-    case PLAYING:   return (animPhase & 1) ? "BALL??????" : "I GOT IT-- wait";
-    case EATING:    return (animPhase & 1) ? "nom. nom. oh" : "food is friend";
-    case REJECT:    return rejectWasFood ? "no. full. rock." : "too silly already";
-    case MISERABLE: return "i am a pancake";
-    case HUNGRY:    return (animPhase & 2) ? "FEED THE VOID" : "my tummy went bye";
-    case BORED:     return (animPhase & 1) ? "so. bored. help." : "watching dust...";
-    case SLEEP:     return (animPhase & 1) ? "snork... miip" : "dreaming of meat";
-    case GROOM:     return (animPhase & 1) ? "taste my foot" : "why lick... ok";
-    case STRETCH:   return "i am long now";
-    case HAPPY:     return HAPPY_LINES[goofThought % 4];
+    case PLAYING:
+      return flashStatus((animPhase & 1) ? PSTR("BALL??????") : PSTR("I GOT IT-- wait"));
+    case EATING:
+      return flashStatus((animPhase & 1) ? PSTR("nom. nom. oh") : PSTR("food is friend"));
+    case REJECT:
+      return flashStatus(rejectWasFood ? PSTR("no. full. rock.") : PSTR("too silly already"));
+    case MISERABLE: return flashStatus(PSTR("i am a pancake"));
+    case HUNGRY:
+      return flashStatus((animPhase & 2) ? PSTR("FEED THE VOID") : PSTR("my tummy went bye"));
+    case BORED:
+      return flashStatus((animPhase & 1) ? PSTR("so. bored. help.") : PSTR("watching dust..."));
+    case SLEEP:
+      return flashStatus((animPhase & 1) ? PSTR("snork... miip") : PSTR("dreaming of meat"));
+    case GROOM:
+      return flashStatus((animPhase & 1) ? PSTR("taste my foot") : PSTR("why lick... ok"));
+    case STRETCH:   return flashStatus(PSTR("i am long now"));
+    case HAPPY: {
+      const char *lines[] = {
+        PSTR("hehehe"), PSTR("i am soup"), PSTR("wag forever"), PSTR("silly mode")
+      };
+      return flashStatus(lines[goofThought % 4]);
+    }
     case WALK_R:
-    case WALK_L:     return WALK_LINES[goofThought % 4];
-    case SIT:       return SIT_LINES[goofThought % 5];
+    case WALK_L: {
+      const char *lines[] = {
+        PSTR("where go"), PSTR("lost already"), PSTR("step step?"), PSTR("wait. wall.")
+      };
+      return flashStatus(lines[goofThought % 4]);
+    }
+    case SIT: {
+      const char *lines[] = {
+        PSTR("i forgor"), PSTR("brain empty"), PSTR("staring..."), PSTR("huh??"), PSTR("............")
+      };
+      return flashStatus(lines[goofThought % 5]);
+    }
     default:
-      if (fun > 75 && food > 75) return "certified doofus";
-      return "um";
+      if (fun > 75 && food > 75) return flashStatus(PSTR("certified doofus"));
+      return flashStatus(PSTR("um"));
   }
 }
 
