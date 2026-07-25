@@ -803,83 +803,102 @@ const char *statusText() {
   }
 }
 
-// Compact cute overlays (flash-friendly).
-void drawCuteFace(int x, int y, bool faceRight) {
-  int eye = faceRight ? x + 22 : x + 4;
-  int eye2 = faceRight ? x + 16 : x + 10;
-  int nose = faceRight ? x + 28 : x + 2;
-  int blush = faceRight ? x + 26 : x + 1;
-
-  // Round floppy ear tips
-  display.fillCircle(eye + 1, y + 1, 2, WHITE);
-  display.fillCircle(eye2 + 1, y, 2, WHITE);
-
-  if (pose == SLEEP) {
-    display.drawLine(eye, y + 7, eye + 3, y + 7, BLACK);
-    display.drawLine(eye2, y + 7, eye2 + 3, y + 7, BLACK);
-  } else {
-    // Big sparkly eyes
-    display.fillRect(eye, y + 6, 3, 3, BLACK);
-    display.fillRect(eye2, y + 6, 3, 3, BLACK);
-    display.drawPixel(eye + 1, y + 6, WHITE);
-    display.drawPixel(eye2 + 1, y + 6, WHITE);
-  }
-
-  // Tiny nose + blush
-  display.fillRect(nose, y + 9, 2, 2, BLACK);
-  display.drawPixel(blush, y + 10, WHITE);
-  display.drawPixel(blush + (faceRight ? -2 : 2), y + 11, WHITE);
-}
-
 void drawFormBody(int x, int y) {
-  if (dogLevel < 2) return;
-
-  if (careStyle == STYLE_CHONKY) {
-    display.fillCircle(x + 17, y + 15, dogLevel >= 4 ? 6 : 4, WHITE);
-  } else if (careStyle == STYLE_PLAYFUL) {
-    // Soft tummy tuck + bouncing heart toy
-    display.fillRect(x + 11, y + 15, 11, 2, BLACK);
-    int hx = x - 4 + ((animPhase & 1) ? 1 : 0);
-    int hy = y + 8 - ((animPhase & 1) ? 1 : 0);
-    display.drawPixel(hx, hy, WHITE);
-    display.drawPixel(hx + 2, hy, WHITE);
-    display.drawPixel(hx + 1, hy + 1, WHITE);
-  } else {
-    // Soft forehead fluff
-    display.fillCircle(x + 13, y, 2, WHITE);
+  // Distinct silhouette per evolution form (visible on mono OLED).
+  if (careStyle == STYLE_CHONKY && dogLevel >= 2) {
+    uint8_t r = 4 + (dogLevel >= 4 ? 2 : 0) + (dogLevel >= 5 ? 1 : 0);
+    display.fillCircle(x + 16, y + 15, r, WHITE);
+    display.fillRect(x + 9, y + 15, 16, 4, WHITE);
+    display.fillRect(x + 8, y + 18, 5, 2, WHITE);
+    display.fillRect(x + 20, y + 18, 5, 2, WHITE);
+  } else if (careStyle == STYLE_PLAYFUL && dogLevel >= 2) {
+    display.fillRect(x + 10, y + 15, 12, 2, BLACK);
+    int bx = x - 5 + ((animPhase == 1) ? 2 : ((animPhase == 3) ? -1 : 0));
+    int by = y + 9 - ((animPhase & 1) ? 2 : 0);
+    display.fillCircle(bx, by, 2, WHITE);
+    display.drawPixel(bx, by, BLACK);
+  } else if (careStyle == STYLE_BALANCED && dogLevel >= 2) {
+    display.fillRect(x + 12, y - 1, 4, 2, WHITE);
+    display.drawPixel(x + 13, y - 2, WHITE);
   }
 }
 
 void drawLevelLook(int x, int y) {
-  if (dogLevel < 2) return;
-
-  // Heart collar
-  display.fillRect(x + 7, y + 11, 17, 2, BLACK);
-  display.drawPixel(x + 14, y + 13, WHITE);
-  display.drawPixel(x + 16, y + 13, WHITE);
-  display.drawPixel(x + 15, y + 14, WHITE);
+  if (dogLevel >= 2) {
+    if (careStyle == STYLE_PLAYFUL) {
+      display.fillRect(x + 7, y + 11, 17, 3, BLACK);
+      display.fillCircle(x + 3, y + 14, 2, WHITE);
+      display.drawPixel(x + 3, y + 14, BLACK);
+    } else if (careStyle == STYLE_CHONKY) {
+      display.fillRect(x + 6, y + 12, 20, 3, BLACK);
+      display.fillRect(x + 14, y + 15, 5, 4, WHITE);
+    } else {
+      display.fillRect(x + 7, y + 11, 17, 3, BLACK);
+      display.drawLine(x + 7, y + 11, x + 23, y + 11, WHITE);
+      display.drawLine(x + 7, y + 13, x + 23, y + 13, WHITE);
+      display.fillRect(x + 14, y + 14, 4, 5, WHITE);
+      display.drawPixel(x + 15, y + 16, BLACK);
+    }
+  }
 
   if (dogLevel >= 3) {
     if (careStyle == STYLE_PLAYFUL) {
-      // Little bow on head
-      display.fillRect(x + 10, y + 1, 8, 2, WHITE);
-      display.fillRect(x + 13, y - 1, 2, 4, WHITE);
+      display.fillRect(x + 4, y + 2, 15, 3, WHITE);
+      display.fillRect(x + 4, y + 3, 15, 1, BLACK);
     } else if (careStyle == STYLE_CHONKY) {
-      // Soft chef puff
-      display.fillCircle(x + 14, y - 3, 4, WHITE);
-      display.fillRect(x + 10, y - 1, 9, 2, WHITE);
+      display.fillTriangle(x + 5, y + 9, x + 18, y + 9, x + 11, y + 18, WHITE);
+      display.drawLine(x + 8, y + 12, x + 14, y + 12, BLACK);
     } else {
-      // Cute ribbon cape
-      display.fillTriangle(x + 27, y + 5, x + 33, y + 8, x + 28, y + 16, WHITE);
+      display.fillTriangle(x - 3, y + 8, x + 6, y + 10, x - 3, y + 18, WHITE);
+      display.drawLine(x - 2, y + 10, x - 2, y + 16, BLACK);
+    }
+  }
+
+  if (dogLevel == 4) {
+    if (careStyle == STYLE_PLAYFUL) {
+      display.fillRect(x + 5, y - 3, 18, 4, WHITE);
+      display.fillRect(x + 1, y - 1, 9, 2, WHITE);
+    } else if (careStyle == STYLE_CHONKY) {
+      display.fillRect(x + 9, y - 2, 12, 4, WHITE);
+      display.fillCircle(x + 15, y - 6, 5, WHITE);
+      display.fillRect(x + 12, y - 4, 2, 2, BLACK);
+    } else {
+      display.fillTriangle(x + 6, y + 1, x + 20, y + 1, x + 13, y - 10, WHITE);
+      display.fillRect(x + 6, y + 1, 15, 2, WHITE);
+      display.fillRect(x + 12, y - 12, 3, 3, WHITE);
     }
   }
 
   if (dogLevel >= 5) {
-    // Tiny flower crown
-    display.fillCircle(x + 10, y - 4, 2, WHITE);
-    display.fillCircle(x + 15, y - 6, 2, WHITE);
-    display.fillCircle(x + 20, y - 4, 2, WHITE);
-    display.drawPixel(x + 15, y - 6, BLACK);
+    if (careStyle == STYLE_PLAYFUL) {
+      display.fillCircle(x + 14, y - 5, 4, WHITE);
+      display.fillRect(x + 12, y - 1, 5, 6, WHITE);
+      display.drawPixel(x + 14, y - 5, BLACK);
+      display.fillTriangle(x + 28, y + 4, x + 36, y + 6, x + 30, y + 16, WHITE);
+      if (animFrame) {
+        display.fillCircle(x - 4, y + 6, 2, WHITE);
+        display.drawPixel(x - 4, y + 6, BLACK);
+      }
+    } else if (careStyle == STYLE_CHONKY) {
+      display.fillRect(x + 7, y - 3, 16, 4, WHITE);
+      display.fillRect(x + 9, y - 6, 3, 3, WHITE);
+      display.fillRect(x + 14, y - 7, 3, 4, WHITE);
+      display.fillRect(x + 19, y - 6, 3, 3, WHITE);
+      display.fillCircle(x - 2 + (animPhase & 1), y + 8, 1, WHITE);
+      display.fillCircle(x + 31, y + 6 + (animPhase == 2 ? 1 : 0), 1, WHITE);
+      display.fillCircle(x + 28, y + 14, 1, WHITE);
+    } else {
+      display.fillRect(x + 7, y - 3, 16, 4, WHITE);
+      display.fillRect(x + 7, y - 6, 3, 3, WHITE);
+      display.fillRect(x + 13, y - 8, 4, 5, WHITE);
+      display.fillRect(x + 20, y - 6, 3, 3, WHITE);
+      display.fillTriangle(x + 27, y + 5, x + 35, y + 8, x + 29, y + 19, WHITE);
+      display.drawLine(x + 28, y + 8, x + 30, y + 16, BLACK);
+      if (animFrame) {
+        display.drawPixel(x + 3, y - 4, WHITE);
+        display.drawPixel(x + 24, y - 5, WHITE);
+      }
+    }
   }
 }
 
@@ -889,11 +908,7 @@ void drawDog(int x, int y, const unsigned char *bitmap) {
   if (careStyle == STYLE_CHONKY && dogLevel >= 2) dy += 1;
   if (dogLevel >= 5 && careStyle == STYLE_BALANCED) dy -= 1;
 
-  bool faceRight = (bitmap == dog_walk_r1 || bitmap == dog_walk_r2
-                    || bitmap == dog_reject1 || bitmap == dog_reject2);
-
   display.drawBitmap(x, y + dy, bitmap, SPRITE_W, SPRITE_H, WHITE);
-  drawCuteFace(x, y + dy, faceRight);
   drawFormBody(x, y + dy);
   drawLevelLook(x, y + dy);
 }
