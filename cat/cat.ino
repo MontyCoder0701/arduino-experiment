@@ -558,48 +558,26 @@ const char *flashStatus(const char *p) {
 
 const char *statusText() {
   if (showingReset) return flashStatus(PSTR("uhhh... who am i"));
-  if (holdMs >= HOLD_HINT_MS) return flashStatus(PSTR("wait what are u-"));
+  if (holdMs >= HOLD_HINT_MS) return flashStatus(PSTR("hold to reset"));
   if (showingBonk) return flashStatus(PSTR("BONK"));
 
   switch (pose) {
-    case PLAYING:
-      return flashStatus((animPhase & 1) ? PSTR("BALL??????") : PSTR("I GOT IT-- wait"));
-    case EATING:
-      return flashStatus((animPhase & 1) ? PSTR("nom. nom. oh") : PSTR("food is friend"));
+    case PLAYING:   return flashStatus(PSTR("BALL!!"));
+    case EATING:    return flashStatus(PSTR("nom nom"));
     case REJECT:
       return flashStatus(rejectWasFood ? PSTR("no. full. rock.") : PSTR("too silly already"));
     case MISERABLE: return flashStatus(PSTR("i am a pancake"));
-    case HUNGRY:
-      return flashStatus((animPhase & 2) ? PSTR("FEED THE VOID") : PSTR("my tummy went bye"));
-    case BORED:
-      return flashStatus((animPhase & 1) ? PSTR("so. bored. help.") : PSTR("watching dust..."));
+    case HUNGRY:    return flashStatus(PSTR("feed me"));
+    case BORED:     return flashStatus(PSTR("play?"));
     case SLEEP:
-      return flashStatus((animPhase & 1) ? PSTR("snork... miip") : PSTR("dreaming of meat"));
     case GROOM:
-      return flashStatus((animPhase & 1) ? PSTR("taste my foot") : PSTR("why lick... ok"));
-    case STRETCH:   return flashStatus(PSTR("i am long now"));
-    case HAPPY: {
-      const char *lines[] = {
-        PSTR("hehehe"), PSTR("i am soup"), PSTR("wag forever"), PSTR("silly mode")
-      };
-      return flashStatus(lines[goofThought % 4]);
-    }
+    case STRETCH:
+    case HAPPY:
     case WALK_R:
-    case WALK_L: {
-      const char *lines[] = {
-        PSTR("where go"), PSTR("lost already"), PSTR("step step?"), PSTR("wait. wall.")
-      };
-      return flashStatus(lines[goofThought % 4]);
-    }
-    case SIT: {
-      const char *lines[] = {
-        PSTR("i forgor"), PSTR("brain empty"), PSTR("staring..."), PSTR("huh??"), PSTR("............")
-      };
-      return flashStatus(lines[goofThought % 5]);
-    }
+    case WALK_L:
+    case SIT:
     default:
-      if (fun > 75 && food > 75) return flashStatus(PSTR("certified doofus"));
-      return flashStatus(PSTR("um"));
+      return flashStatus(PSTR(""));
   }
 }
 
@@ -786,7 +764,7 @@ void loop() {
       drawDog(x + ((animPhase == 3) ? 1 : 0), y + breath, dog_sleep);
       display.setTextSize(1);
       display.setCursor(x + 34, y - 1 - animPhase);
-      display.print(animPhase >= 2 ? "mlep" : "zZ");
+      display.print(F("zZ"));
       break;
     }
 
@@ -848,7 +826,7 @@ void loop() {
       drawDog(x + shake, y + softBob[animPhase], (animPhase & 1) ? dog_reject2 : dog_reject1);
       display.setTextSize(1);
       display.setCursor(x + 30, y - 7);
-      display.print(animPhase & 1 ? "NOPE" : "nuh");
+      display.print(F("NO"));
       break;
     }
 
@@ -858,14 +836,14 @@ void loop() {
       drawPant(x, y + softBob[animPhase]);
       display.setTextSize(1);
       display.setCursor(x + 10, y - 9 - (animPhase & 1));
-      display.print(animPhase >= 2 ? "!!?" : "!?");
+      display.print(F("!"));
       break;
 
     case BORED:
       drawDog(x + tip[animPhase], y + ((animPhase == 2) ? 1 : 0), dog_bored);
       display.setTextSize(1);
       display.setCursor(x + 34, y - (animPhase & 1));
-      display.print(animPhase >= 2 ? "huh" : "...");
+      display.print(F("..."));
       break;
 
     case MISERABLE:
