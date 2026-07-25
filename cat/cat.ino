@@ -243,18 +243,21 @@ const unsigned long NAP_AFTER_MS = 20000;  // no interaction -> dog naps
 const unsigned long FRAME_MS = 130;        // frantic derpy animation tick
 const unsigned long DAY_MS = 86400000UL;   // one powered-on day
 
-// --- BUTTON ENGINE (single = play, double = feed, hold 5s = full reset) ---
+// --- BUTTON ENGINE ---
+// single tap = pet, double tap = feed
+// hold 3s = show hunger/care gauges
+// hold 5s = full reset
 const unsigned long DEBOUNCE_MS = 40;
-const unsigned long DOUBLE_GAP_MS = 600; // time allowed between clicks for a double
-const unsigned long LONG_PRESS_MS = 5000;
-const unsigned long HOLD_HINT_MS = 450;  // show reset progress after this
+const unsigned long DOUBLE_GAP_MS = 600;
+const unsigned long STATS_HOLD_MS = 3000;  // show gauges
+const unsigned long LONG_PRESS_MS = 5000;  // factory reset
 bool rawButton = HIGH;
 bool stableButton = HIGH;
 unsigned long lastButtonEdge = 0;
 uint8_t clickCount = 0;
 unsigned long lastClickAt = 0;
 unsigned long holdStartedAt = 0;
-unsigned long holdMs = 0; // how long the button is currently held
+unsigned long holdMs = 0;
 bool longPressDone = false;
 bool showingReset = false;
 bool showingLevelUp = false;
@@ -506,17 +509,17 @@ void readButton(unsigned long now) {
   if (now - lastButtonEdge > DEBOUNCE_MS && stableButton != rawButton) {
     stableButton = rawButton;
     if (stableButton == LOW) {
-      // Press starts a hold. Do NOT count a click yet — that waits for release.
       holdStartedAt = now;
       longPressDone = false;
     } else {
-      // Released: short tap counts as a click; long-press reset does not.
+      unsigned long held = now - holdStartedAt;
       holdMs = 0;
-      if (!longPressDone) {
+      // Stats hold or reset hold should not count as pet/feed.
+      if (longPressDone || held >= STATS_HOLD_MS) {
+        clickCount = 0;
+      } else {
         clickCount++;
         lastClickAt = now;
-      } else {
-        clickCount = 0;
       }
     }
   }
@@ -527,7 +530,6 @@ void readButton(unsigned long now) {
     holdMs = 0;
   }
 
-  // Hold 5 seconds: wipe memory. Never fires play/feed because clicks are release-based.
   if (stableButton == LOW && !longPressDone && holdMs >= LONG_PRESS_MS) {
     longPressDone = true;
     holdMs = 0;
@@ -536,7 +538,6 @@ void readButton(unsigned long now) {
     return;
   }
 
-  // Ignore play/feed while held, or after a reset until the next clean taps.
   if (longPressDone || stableButton == LOW) return;
 
   if (clickCount >= 2) {
