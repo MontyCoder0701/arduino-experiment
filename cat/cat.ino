@@ -210,7 +210,7 @@ enum Pose {
 Pose pose = SIT;
 Pose idlePose = SIT;
 
-const Pose IDLE_CHOICES[] = { WALK_R, WALK_L, SIT, SLEEP, GROOM, STRETCH, HAPPY };
+const Pose IDLE_CHOICES[] = { WALK_R, WALK_L, SIT, GROOM, STRETCH, HAPPY };
 const uint8_t IDLE_CHOICE_COUNT = sizeof(IDLE_CHOICES) / sizeof(IDLE_CHOICES[0]);
 
 int dogX = 48;
@@ -219,6 +219,7 @@ unsigned long lastIdleChange = 0;
 unsigned long lastFrameUpdate = 0;
 unsigned long lastFunDrain = 0;
 unsigned long lastFoodDrain = 0;
+unsigned long lastInteractAt = 0;
 unsigned long actionUntil = 0;
 Pose actionPose = PLAYING;
 uint8_t animPhase = 0; // 0..3 for smoother looping motions
@@ -238,6 +239,7 @@ const unsigned long FUN_DRAIN_MS = 10000;  // one point of boredom every 10 seco
 const unsigned long FOOD_DRAIN_MS = 15000; // one point of hunger every 15 seconds
 const unsigned long ACTION_MS = 2200;      // how long a play/feed reaction lasts
 const unsigned long IDLE_CHANGE_MS = 2400; // swap goofy idle loops often
+const unsigned long NAP_AFTER_MS = 20000;  // no interaction -> dog naps
 const unsigned long FRAME_MS = 130;        // frantic derpy animation tick
 const unsigned long DAY_MS = 86400000UL;   // one powered-on day
 
@@ -392,16 +394,23 @@ void setup() {
   randomSeed(analogRead(A0));
   loadState();
   loadDogName(nameIndex);
+  lastInteractAt = millis();
+}
+
+void noteInteraction(unsigned long now) {
+  lastInteractAt = now;
 }
 
 void startAction(Pose p, unsigned long now) {
   actionPose = p;
   actionUntil = now + ACTION_MS;
+  noteInteraction(now);
 }
 
 void playWithDog(unsigned long now) {
+  noteInteraction(now);
   if (food <= CRITICAL_LEVEL) {
-    // Too weak to chase the ball, it just flops over
+    // Too weak for pets, it just flops over
     fun = clampLevel(fun + 3);
     markDirty();
     saveState();
@@ -409,19 +418,20 @@ void playWithDog(unsigned long now) {
     return;
   }
   if (fun >= FULL_LEVEL) {
-    // Already zoomies'd out — turns away from the ball
+    // Already fully satisfied — politely dodges the hand
     rejectWasFood = false;
     startAction(REJECT, now);
     return;
   }
   fun = clampLevel(fun + 20);
-  food = clampLevel(food - 4); // running around burns a snack
+  food = clampLevel(food - 1);
   markDirty();
   saveState();
   startAction(PLAYING, now);
 }
 
 void feedDog(unsigned long now) {
+  noteInteraction(now);
   if (food >= FULL_LEVEL) {
     // Too stuffed — pushes the bowl away
     rejectWasFood = true;
@@ -562,7 +572,7 @@ const char *statusText() {
   if (showingBonk) return flashStatus(PSTR("BONK"));
 
   switch (pose) {
-    case PLAYING:   return flashStatus(PSTR("BALL!!"));
+    case PLAYING:   return flashStatus(PSTR("pet pet"));
     case EATING:    return flashStatus(PSTR("nom nom"));
     case REJECT:
       return flashStatus(rejectWasFood ? PSTR("no. full. rock.") : PSTR("too silly already"));
@@ -590,6 +600,19 @@ void drawPant(int x, int y) {
   display.drawLine(x + 7, y + 11, x + 7, y + 14, WHITE);
   display.drawPixel(x + 8, y + 14, WHITE);
   display.drawPixel(x + 6, y + 14, WHITE);
+}
+
+void drawPettingHand(int x, int y) {
+  // Wrist coming down from above
+  display.drawLine(x + 4, y - 5, x + 4, y, WHITE);
+  display.drawLine(x + 5, y - 5, x + 5, y, WHITE);
+
+  // Palm and four little fingers
+  display.fillRect(x + 2, y, 7, 4, WHITE);
+  display.drawPixel(x, y + 2, WHITE);
+  display.drawPixel(x + 1, y + 3, WHITE);
+  display.drawPixel(x + 9, y + 1, WHITE);
+  display.drawPixel(x + 10, y + 2, WHITE);
 }
 
 void drawBonkStars(int x, int y) {
@@ -630,20 +653,25 @@ void loop() {
   // 2. Button: one press plays, two presses feed
   readButton(currentMillis);
 
-  // 3. Animation ticks (4-phase loop for bounce / wag / hop)
+  // 3. Animation ticks (slower while napping)
   bool phaseAdvanced = false;
-  if (currentMillis - lastFrameUpdate > FRAME_MS) {
+  unsigned long frameMs = (pose == SLEEP) ? (FRAME_MS * 3) : FRAME_MS;
+  if (currentMillis - lastFrameUpdate > frameMs) {
     animPhase = (animPhase + 1) & 3;
     animFrame = (animPhase & 1);
     lastFrameUpdate = currentMillis;
     phaseAdvanced = true;
   }
 
-  // 4. Idle wandering through goofy loops when needs are fine
-  if (currentMillis - lastIdleChange > IDLE_CHANGE_MS) {
+  bool wantsNap = (currentMillis - lastInteractAt >= NAP_AFTER_MS)
+                  && (fun > LOW_LEVEL)
+                  && (food > LOW_LEVEL);
+
+  // 4. Idle wandering only while awake
+  if (!wantsNap && currentMillis - lastIdleChange > IDLE_CHANGE_MS) {
     goofThought = random(8);
     if (fun > 75 && food > 75 && random(2) == 0) {
-      idlePose = HAPPY; // chaos wag when content
+      idlePose = HAPPY;
     } else {
       idlePose = IDLE_CHOICES[random(IDLE_CHOICE_COUNT)];
     }
@@ -654,7 +682,8 @@ void loop() {
     showingBonk = false;
   }
 
-  // 5. Mood resolver: a fresh action beats a need, a need beats idling
+  // 5. Mood resolver:
+  // action > hunger/boredom wake-up > nap after idle > normal idle
   if (currentMillis < actionUntil) {
     pose = actionPose;
   } else {
@@ -662,9 +691,12 @@ void loop() {
     if (fun <= CRITICAL_LEVEL && food <= CRITICAL_LEVEL) {
       pose = MISERABLE;
     } else if (food <= LOW_LEVEL) {
-      pose = HUNGRY;
+      pose = HUNGRY; // wakes from nap when hungry
     } else if (fun <= LOW_LEVEL) {
-      pose = BORED;
+      pose = BORED;  // wakes from nap when bored
+    } else if (wantsNap) {
+      pose = SLEEP;
+      idlePose = SLEEP;
     } else {
       pose = idlePose;
     }
@@ -689,11 +721,6 @@ void loop() {
         showingBonk = true;
         bonkUntil = currentMillis + 700;
       }
-      markDirty();
-    } else if (pose == PLAYING) {
-      // Misses the ball on purpose, spins in place like a fool
-      int jitter = (animPhase == 0) ? 3 : ((animPhase == 2) ? -3 : ((animPhase & 1) ? 1 : -1));
-      dogX = constrain(dogX + jitter, 0, 96);
       markDirty();
     } else if (pose == HAPPY && animPhase == 0) {
       // Accidental scoot while wagging
@@ -792,20 +819,17 @@ void loop() {
       break;
 
     case PLAYING: {
-      int by = y + bigBob[animPhase];
-      // Flips between facing left/right like it forgot which way the ball went
-      const unsigned char *frame = (animPhase == 0) ? dog_walk_l1
-                                 : (animPhase == 1) ? dog_play
-                                 : (animPhase == 2) ? dog_walk_r1
-                                 : dog_happy2;
-      drawDog(x, by, frame);
-      drawPant(x, by);
-      int ballX = x - 4 - ((animPhase % 2) ? 10 : -2);
-      int ballY = y + 12 - ((animPhase & 1) ? 6 : 0);
-      display.fillCircle(ballX, ballY, 2, WHITE);
-      // Miss sparkles
-      display.drawPixel(ballX + 3, ballY - 2, WHITE);
-      display.drawPixel(ballX - 2, ballY - 3, WHITE);
+      // Hand pats the dog's head; dog squishes happily on contact.
+      const int8_t handDrop[4] = {0, 3, 4, 2};
+      const int8_t dogSquish[4] = {0, 1, 2, 1};
+      int by = y + dogSquish[animPhase];
+      drawDog(x, by, (animPhase & 1) ? dog_happy2 : dog_happy1);
+      drawPettingHand(x + 5, y - 8 + handDrop[animPhase]);
+
+      if (animPhase == 1 || animPhase == 2) {
+        drawPant(x, by);
+        drawHeart(x + 34, y - 5);
+      }
       break;
     }
 
