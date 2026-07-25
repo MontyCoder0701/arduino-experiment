@@ -562,6 +562,28 @@ void drawGauge(int y, const char *label, int value, bool blink) {
   }
 }
 
+uint8_t careNeedForLevel() {
+  if (dogLevel >= MAX_DOG_LEVEL) return 1;
+  return CARE_BASE + (uint8_t)((dogLevel - 1) * CARE_LEVEL_STEP);
+}
+
+int careProgressPercent() {
+  if (dogLevel >= MAX_DOG_LEVEL) return 100;
+  uint8_t need = careNeedForLevel();
+  uint8_t balanced = petsSinceLevel < feedsSinceLevel ? petsSinceLevel : feedsSinceLevel;
+  return (int)((balanced * 100UL) / need);
+}
+
+void drawCareGauge(int y) {
+  display.setTextSize(1);
+  display.setCursor(0, y);
+  display.print(F("CARE"));
+  int pct = careProgressPercent();
+  display.drawRect(29, y - 1, 100, 9, WHITE);
+  int fillW = (pct * 96) / 100;
+  if (fillW > 0) display.fillRect(31, y + 1, fillW, 5, WHITE);
+}
+
 void drawPetHeader() {
   display.setTextSize(1);
   display.setCursor(0, 0);
@@ -622,7 +644,9 @@ const char *flashStatus(const char *p) {
 const char *statusText() {
   if (showingLevelUp) return flashStatus(PSTR("LEVEL UP!!"));
   if (showingReset) return flashStatus(PSTR("uhhh... who am i"));
-  if (holdMs >= HOLD_HINT_MS) return flashStatus(PSTR("hold to reset"));
+  if (holdMs >= STATS_HOLD_MS && holdMs < LONG_PRESS_MS) {
+    return flashStatus(PSTR("hold to reset"));
+  }
   if (showingBonk) return flashStatus(PSTR("BONK"));
 
   switch (pose) {
@@ -836,19 +860,28 @@ void loop() {
   // Persistent name and powered-on age
   drawPetHeader();
 
-  // Draw Need Gauges only once a need gets low (critical ones blink for attention)
-  if (fun <= LOW_LEVEL) drawGauge(9, "PLAY", fun, fun <= CRITICAL_LEVEL && animFrame);
-  if (food <= LOW_LEVEL) drawGauge(17, "FOOD", food, food <= CRITICAL_LEVEL && animFrame);
+  // Need gauges: auto when low, or hold 3s to inspect anytime
+  bool showStats = (holdMs >= STATS_HOLD_MS);
+  if (showStats || fun <= LOW_LEVEL) {
+    drawGauge(9, "PLAY", fun, fun <= CRITICAL_LEVEL && animFrame);
+  }
+  if (showStats || food <= LOW_LEVEL) {
+    drawGauge(17, "FOOD", food, food <= CRITICAL_LEVEL && animFrame);
+  }
+  if (showStats) {
+    drawCareGauge(25);
+  }
 
-  // Draw Mood Caption
-  printCentered(27, statusText());
+  // Draw Mood Caption (a bit lower when stats are open)
+  printCentered(showStats ? 36 : 27, statusText());
 
-  // Hold progress bar while preparing a factory reset
-  if (holdMs >= HOLD_HINT_MS) {
-    int fillW = (int)((holdMs * 100UL) / LONG_PRESS_MS);
+  // After 3s, remaining hold fills toward factory reset at 5s
+  if (holdMs >= STATS_HOLD_MS && holdMs < LONG_PRESS_MS) {
+    unsigned long span = LONG_PRESS_MS - STATS_HOLD_MS;
+    int fillW = (int)(((holdMs - STATS_HOLD_MS) * 100UL) / span);
     if (fillW > 100) fillW = 100;
-    display.drawRect(14, 36, 100, 6, WHITE);
-    if (fillW > 0) display.fillRect(14, 36, fillW, 6, WHITE);
+    display.drawRect(14, 44, 100, 5, WHITE);
+    if (fillW > 0) display.fillRect(14, 44, fillW, 5, WHITE);
   }
 
   // Draw Floor Ground Line
