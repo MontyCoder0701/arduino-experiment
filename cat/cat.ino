@@ -1,12 +1,14 @@
-// AnnoyingDogPet.ino
+// ADHDBuddy.ino
 //
-// Virtual dog pet with two needs: PLAY and FOOD.
+// ADHD companion pet: two reminders that drain over ~20 minutes.
+//   MOVE (fun)  -> stretch / walk break
+//   H2O  (food) -> drink water
 // Wiring: one push button between D2 and GND (uses the internal pull-up).
-//   single press  -> pet the dog
-//   double press  -> feed the dog
-//   triple press  -> show hunger / care gauges
+//   single press  -> logged a movement break
+//   double press  -> logged a water sip
+//   triple press  -> show MOVE / H2O / care gauges
 //   hold 5 seconds -> turn OFF (hold 5s again to turn back ON)
-//   hold 10 seconds -> wipe memory and start a brand-new dog
+//   hold 10 seconds -> wipe memory and start fresh
 #include <Wire.h>
 #include <EEPROM.h>
 #include <Adafruit_GFX.h>
@@ -53,20 +55,23 @@ bool showingBonk = false;
 unsigned long bonkUntil = 0;
 uint8_t goofThought = 0;
 
-// --- NEEDS ENGINE ---
-int fun = 70;   // playfulness, 0..100
-int food = 70;  // fullness, 0..100
-const int LOW_LEVEL = 25;
-const int CRITICAL_LEVEL = 12;
-const int FULL_LEVEL = 90;                // too satisfied / too full to accept more
-const unsigned long FUN_DRAIN_MS = 10000;  // one point of boredom every 10 seconds
-const unsigned long FOOD_DRAIN_MS = 15000; // one point of hunger every 15 seconds
-const unsigned long ACTION_MS = 2200;      // how long a play/feed reaction lasts
-const unsigned long IDLE_CHANGE_MS = 2400; // swap goofy idle loops often
-const unsigned long NAP_AFTER_MS = 20000;  // no interaction -> dog naps
-const unsigned long FRAME_MS = 130;        // frantic derpy animation tick
-const unsigned long DAY_MS = 86400000UL;   // one powered-on day
-const unsigned long BATTERY_MS = 2000;     // refresh battery % every 2s
+// --- NEEDS ENGINE (ADHD reminders) ---
+// fun  = movement / break energy
+// food = hydration
+int fun = 70;
+int food = 70;
+const int LOW_LEVEL = 25;                 // start nagging
+const int CRITICAL_LEVEL = 12;            // loud nag
+const int FULL_LEVEL = 90;                // already topped up
+// ~20 min from topped (~100) down to LOW (25) ≈ 75 points
+const unsigned long FUN_DRAIN_MS = (20UL * 60UL * 1000UL) / 75UL;   // move reminder
+const unsigned long FOOD_DRAIN_MS = (20UL * 60UL * 1000UL) / 75UL;  // water reminder
+const unsigned long ACTION_MS = 2200;      // celebration after logging move/sip
+const unsigned long IDLE_CHANGE_MS = 2400;
+const unsigned long NAP_AFTER_MS = 20000;
+const unsigned long FRAME_MS = 130;
+const unsigned long DAY_MS = 86400000UL;
+const unsigned long BATTERY_MS = 2000;
 
 // Board VCC as battery % (uses internal 1.1V bandgap; no extra wiring).
 // 5.0V = 100%, 3.3V = 0%.
@@ -74,7 +79,7 @@ unsigned long lastBatteryAt = 0;
 uint8_t batteryPct = 100;
 
 // --- BUTTON ENGINE ---
-// single tap = pet, double tap = feed, triple tap = show gauges
+// single tap = move break, double tap = drink water, triple tap = gauges
 // hold 5s = power toggle (off / on)
 // hold 10s = full reset
 const unsigned long DEBOUNCE_MS = 40;
@@ -376,9 +381,10 @@ void startAction(Pose p, unsigned long now) {
 }
 
 void playWithDog(unsigned long now) {
+  // Single press: user took a movement / stretch break.
   noteInteraction(now);
   if (food <= CRITICAL_LEVEL) {
-    // Too weak for pets, it just flops over
+    // Dehydrated — nudge water first
     fun = clampLevel(fun + 3);
     markDirty();
     saveState();
@@ -386,12 +392,11 @@ void playWithDog(unsigned long now) {
     return;
   }
   if (fun >= FULL_LEVEL) {
-    // Already fully satisfied — politely dodges the hand
     rejectWasFood = false;
     startAction(REJECT, now);
     return;
   }
-  fun = clampLevel(fun + 20);
+  fun = clampLevel(fun + 30);  // resets ~20 min move timer
   food = clampLevel(food - 1);
   if (petsSinceLevel < 255) petsSinceLevel++;
   if (totalPets < 255) totalPets++;
@@ -403,15 +408,15 @@ void playWithDog(unsigned long now) {
 }
 
 void feedDog(unsigned long now) {
+  // Double press: user drank water.
   noteInteraction(now);
   if (food >= FULL_LEVEL) {
-    // Too stuffed — pushes the bowl away
     rejectWasFood = true;
     startAction(REJECT, now);
     return;
   }
-  food = clampLevel(food + 24);
-  fun = clampLevel(fun + 4); // dinner is its own kind of fun
+  food = clampLevel(food + 30);  // resets ~20 min water timer
+  fun = clampLevel(fun + 2);
   if (feedsSinceLevel < 255) feedsSinceLevel++;
   if (totalFeeds < 255) totalFeeds++;
   refreshCareStyle();
@@ -521,25 +526,25 @@ void drawCareGauge(int y) {
 const char *levelUpTitle() {
   if (careStyle == STYLE_PLAYFUL) {
     switch (dogLevel) {
-      case 2:  return PSTR("FOX ROOKIE");
-      case 3:  return PSTR("ZOOM FOX");
-      case 4:  return PSTR("TRACK FOX");
-      default: return PSTR("ACE FOX");
+      case 2:  return PSTR("STRETCH FOX");
+      case 3:  return PSTR("WALK FOX");
+      case 4:  return PSTR("BREAK FOX");
+      default: return PSTR("MOVE ACE");
     }
   }
   if (careStyle == STYLE_CHONKY) {
     switch (dogLevel) {
-      case 2:  return PSTR("SNACK LOAF");
-      case 3:  return PSTR("BIG LOAF");
-      case 4:  return PSTR("CHEF LOAF");
-      default: return PSTR("SUPREME LOAF");
+      case 2:  return PSTR("SIP LOAF");
+      case 3:  return PSTR("HYDRATED");
+      case 4:  return PSTR("WATER CHEF");
+      default: return PSTR("H2O KING");
     }
   }
   switch (dogLevel) {
-    case 2:  return PSTR("GOOD PUP");
-    case 3:  return PSTR("FINE DOG");
-    case 4:  return PSTR("PARTY DOG");
-    default: return PSTR("ROYAL DOG");
+    case 2:  return PSTR("GOOD HABIT");
+    case 3:  return PSTR("STEADY");
+    case 4:  return PSTR("ON TRACK");
+    default: return PSTR("ADHD ACE");
   }
 }
 
@@ -632,26 +637,18 @@ const char *statusText() {
 
   switch (pose) {
     case PLAYING:
-      if (careStyle == STYLE_PLAYFUL) return flashStatus(PSTR("ZOOMIES!!"));
-      if (careStyle == STYLE_CHONKY) return flashStatus(PSTR("oof.. pet"));
-      return flashStatus(PSTR("pet pet"));
+      return flashStatus(PSTR("nice stretch!"));
     case EATING:
-      if (careStyle == STYLE_PLAYFUL) return flashStatus(PSTR("fuel up!"));
-      if (careStyle == STYLE_CHONKY) return flashStatus(PSTR("MORE nom"));
-      return flashStatus(PSTR("nom nom"));
+      return flashStatus(PSTR("sip sip!"));
     case REJECT:
-      if (rejectWasFood) {
-        return flashStatus(careStyle == STYLE_CHONKY ? PSTR("too round already") : PSTR("no. full."));
-      }
-      return flashStatus(careStyle == STYLE_PLAYFUL ? PSTR("already zoomed") : PSTR("too excited!"));
-    case MISERABLE: return flashStatus(PSTR("i am a pancake"));
+      if (rejectWasFood) return flashStatus(PSTR("just sipped"));
+      return flashStatus(PSTR("just moved"));
+    case MISERABLE: return flashStatus(PSTR("drink first!"));
     case HUNGRY:
-      return flashStatus(careStyle == STYLE_CHONKY ? PSTR("FEED. NOW.") : PSTR("feed me"));
+      return flashStatus(food <= CRITICAL_LEVEL ? PSTR("DRINK WATER") : PSTR("water time"));
     case BORED:
-      return flashStatus(careStyle == STYLE_PLAYFUL ? PSTR("THROW BALL") : PSTR("play?"));
+      return flashStatus(fun <= CRITICAL_LEVEL ? PSTR("MOVE BREAK!") : PSTR("stretch break"));
     case HAPPY:
-      if (careStyle == STYLE_PLAYFUL) return flashStatus(PSTR("wag athlete"));
-      if (careStyle == STYLE_CHONKY) return flashStatus(PSTR("loaf mode"));
       return flashStatus(PSTR(""));
     case SLEEP:
     case GROOM:
@@ -947,7 +944,7 @@ void loop() {
     saveState();
   }
 
-  // 2. Button: one press plays, two presses feed
+  // 2. Button: 1 = move break, 2 = drink water, 3 = gauges
   readButton(currentMillis);
 
   // 3. Animation ticks (slower while napping)
@@ -1047,17 +1044,17 @@ void loop() {
   // Need gauges: auto when low, or triple-tap to inspect anytime
   bool showStats = (currentMillis < statsUntil);
   if (showStats || fun <= LOW_LEVEL) {
-    drawGauge(9, "PLAY", fun, fun <= CRITICAL_LEVEL && animFrame);
+    drawGauge(9, "MOVE", fun, fun <= CRITICAL_LEVEL && animFrame);
   }
   if (showStats || food <= LOW_LEVEL) {
-    drawGauge(17, "FOOD", food, food <= CRITICAL_LEVEL && animFrame);
+    drawGauge(17, "H2O", food, food <= CRITICAL_LEVEL && animFrame);
   }
   if (showStats) {
     drawCareGauge(25);
     display.setTextSize(1);
     display.setCursor(0, 34);
-    if (careStyle == STYLE_PLAYFUL) display.print(F("SPORT"));
-    else if (careStyle == STYLE_CHONKY) display.print(F("CHONK"));
+    if (careStyle == STYLE_PLAYFUL) display.print(F("MOVER"));
+    else if (careStyle == STYLE_CHONKY) display.print(F("SIPPER"));
     else display.print(F("BALANCED"));
   }
 
@@ -1228,14 +1225,14 @@ void loop() {
       if (careStyle != STYLE_CHONKY) drawPant(x, y + softBob[animPhase]);
       display.setTextSize(1);
       display.setCursor(x + 10, y - 9 - (animPhase & 1));
-      display.print(careStyle == STYLE_CHONKY ? F("!!") : F("!"));
+      display.print(careStyle == STYLE_CHONKY ? F("sip?") : F("!"));
       break;
 
     case BORED:
       drawPet(x + tip[animPhase], y + ((animPhase == 2) ? 1 : 0));
       display.setTextSize(1);
       display.setCursor(x + 34, y - (animPhase & 1));
-      if (careStyle == STYLE_PLAYFUL) display.print(F("run?"));
+      if (careStyle == STYLE_PLAYFUL) display.print(F("go!"));
       else display.print(F("..."));
       break;
 
