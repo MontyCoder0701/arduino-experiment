@@ -68,7 +68,7 @@ const unsigned long FUN_DRAIN_MS = (20UL * 60UL * 1000UL) / 75UL;   // move remi
 const unsigned long FOOD_DRAIN_MS = (20UL * 60UL * 1000UL) / 75UL;  // water reminder
 const unsigned long ACTION_MS = 2200;      // celebration after logging move/sip
 const unsigned long IDLE_CHANGE_MS = 2400;
-const unsigned long NAP_AFTER_MS = 20000;
+const unsigned long NAP_AFTER_MS = 50000;
 const unsigned long FRAME_MS = 130;
 const unsigned long DAY_MS = 86400000UL;
 const unsigned long BATTERY_MS = 2000;
@@ -141,11 +141,52 @@ const char NAME_2[] PROGMEM = "Bean";
 const char *const DOG_NAMES[] PROGMEM = {
   NAME_0, NAME_1, NAME_2
 };
-const uint8_t DOG_NAME_COUNT = 10;
+const uint8_t DOG_NAME_COUNT = 3;
 uint8_t nameIndex = 0;
 uint16_t ageDays = 1;
 char statusBuf[22]; // reusable RAM for captions copied from flash
 char nameBuf[12];
+
+// Random awake chatter (flash-light set).
+const char C_0[] PROGMEM = "u got this";
+const char C_1[] PROGMEM = "breathe..";
+const char C_2[] PROGMEM = "tiny win!";
+const char C_3[] PROGMEM = "still here";
+const char C_4[] PROGMEM = "body check?";
+const char C_5[] PROGMEM = "unclench";
+const char C_6[] PROGMEM = "blink!";
+const char C_7[] PROGMEM = "be kind";
+const char *const CHATTER[] PROGMEM = {
+  C_0, C_1, C_2, C_3, C_4, C_5, C_6, C_7
+};
+const uint8_t CHATTER_COUNT = 8;
+
+const char M_0[] PROGMEM = "stretch!";
+const char M_1[] PROGMEM = "walk bit?";
+const char M_2[] PROGMEM = "MOVE!";
+const char *const MOVE_NAGS[] PROGMEM = { M_0, M_1, M_2 };
+const uint8_t MOVE_NAG_COUNT = 3;
+
+const char W_0[] PROGMEM = "water!";
+const char W_1[] PROGMEM = "sip!";
+const char W_2[] PROGMEM = "H2O!";
+const char *const H2O_NAGS[] PROGMEM = { W_0, W_1, W_2 };
+const uint8_t H2O_NAG_COUNT = 3;
+
+const char P_0[] PROGMEM = "nice move!";
+const char P_1[] PROGMEM = "logged!";
+const char *const MOVE_YAY[] PROGMEM = { P_0, P_1 };
+const uint8_t MOVE_YAY_COUNT = 2;
+
+const char S_0[] PROGMEM = "sip sip!";
+const char S_1[] PROGMEM = "hydrated!";
+const char *const H2O_YAY[] PROGMEM = { S_0, S_1 };
+const uint8_t H2O_YAY_COUNT = 2;
+
+const unsigned long CHATTER_MS = 3200;
+uint8_t chatterIdx = 0;
+uint8_t actionMsgIdx = 0;
+unsigned long lastChatterAt = 0;
 
 void loadDogName(uint8_t index) {
   if (index >= DOG_NAME_COUNT) index = 0;
@@ -333,6 +374,7 @@ void setup() {
   loadDogName(nameIndex);
   lastInteractAt = millis();
   updateBattery(lastInteractAt);
+  rollChatter(lastInteractAt);
 }
 
 void noteInteraction(unsigned long now) {
@@ -369,6 +411,9 @@ void tryLevelUp(unsigned long now) {
 void startAction(Pose p, unsigned long now) {
   actionPose = p;
   actionUntil = now + ACTION_MS;
+  if (p == PLAYING) actionMsgIdx = random(MOVE_YAY_COUNT);
+  else if (p == EATING) actionMsgIdx = random(H2O_YAY_COUNT);
+  else actionMsgIdx = random(5);
   noteInteraction(now);
 }
 
@@ -516,28 +561,9 @@ void drawCareGauge(int y) {
 
 // Evolution name for the level just reached, branched by care pattern.
 const char *levelUpTitle() {
-  if (careStyle == STYLE_PLAYFUL) {
-    switch (dogLevel) {
-      case 2:  return PSTR("STRETCH FOX");
-      case 3:  return PSTR("WALK FOX");
-      case 4:  return PSTR("BREAK FOX");
-      default: return PSTR("MOVE ACE");
-    }
-  }
-  if (careStyle == STYLE_CHONKY) {
-    switch (dogLevel) {
-      case 2:  return PSTR("SIP LOAF");
-      case 3:  return PSTR("HYDRATED");
-      case 4:  return PSTR("WATER CHEF");
-      default: return PSTR("H2O KING");
-    }
-  }
-  switch (dogLevel) {
-    case 2:  return PSTR("GOOD HABIT");
-    case 3:  return PSTR("STEADY");
-    case 4:  return PSTR("ON TRACK");
-    default: return PSTR("ADHD ACE");
-  }
+  if (careStyle == STYLE_PLAYFUL) return PSTR("MOVE UP!");
+  if (careStyle == STYLE_CHONKY) return PSTR("SIP UP!");
+  return PSTR("LEVEL UP!");
 }
 
 void drawLevelUpBanner() {
@@ -612,44 +638,51 @@ const char *flashStatus(const char *p) {
   return statusBuf;
 }
 
+const char *flashTableMsg(const char *const *table, uint8_t count, uint8_t idx) {
+  if (count == 0) return flashStatus(PSTR(""));
+  return flashStatus((const char *)pgm_read_word(&table[idx % count]));
+}
+
+void rollChatter(unsigned long now) {
+  chatterIdx = random(CHATTER_COUNT);
+  lastChatterAt = now;
+}
+
 const char *statusText() {
-  if (showingLevelUp) {
-    if (careStyle == STYLE_PLAYFUL) return flashStatus(PSTR("SPORT FOX!!"));
-    if (careStyle == STYLE_CHONKY) return flashStatus(PSTR("LOAF EVOLVED"));
-    return flashStatus(PSTR("GOOD DOG!!"));
-  }
-  if (showingReset) return flashStatus(PSTR("uhhh... who am i"));
+  if (showingLevelUp) return flashStatus(PSTR("LEVEL UP!"));
+  if (showingReset) return flashStatus(PSTR("reset.."));
   if (holdMs >= POWER_HOLD_MS && holdMs < LONG_PRESS_MS) {
-    return flashStatus(PSTR("keep hold: reset"));
+    return flashStatus(PSTR("hold: reset"));
   }
   if (holdMs >= POWER_HINT_MS && holdMs < POWER_HOLD_MS) {
-    return flashStatus(PSTR("release: turn off"));
+    return flashStatus(PSTR("hold: off"));
   }
   if (showingBonk) return flashStatus(PSTR("BONK"));
 
   switch (pose) {
     case PLAYING:
-      return flashStatus(PSTR("nice stretch!"));
+      return flashTableMsg(MOVE_YAY, MOVE_YAY_COUNT, actionMsgIdx);
     case EATING:
-      return flashStatus(PSTR("sip sip!"));
+      return flashTableMsg(H2O_YAY, H2O_YAY_COUNT, actionMsgIdx);
     case REJECT:
       if (rejectWasFood) return flashStatus(PSTR("just sipped"));
       return flashStatus(PSTR("just moved"));
-    case MISERABLE: return flashStatus(PSTR("drink first!"));
+    case MISERABLE:
+      return flashTableMsg(H2O_NAGS, H2O_NAG_COUNT, chatterIdx);
     case HUNGRY:
-      return flashStatus(food <= CRITICAL_LEVEL ? PSTR("DRINK WATER") : PSTR("water time"));
+      return flashTableMsg(H2O_NAGS, H2O_NAG_COUNT, chatterIdx);
     case BORED:
-      return flashStatus(fun <= CRITICAL_LEVEL ? PSTR("MOVE BREAK!") : PSTR("stretch break"));
-    case HAPPY:
-      return flashStatus(PSTR(""));
+      return flashTableMsg(MOVE_NAGS, MOVE_NAG_COUNT, chatterIdx);
     case SLEEP:
+      return flashStatus(PSTR(""));  // quiet while sleeping
+    case HAPPY:
     case GROOM:
     case STRETCH:
     case WALK_R:
     case WALK_L:
     case SIT:
     default:
-      return flashStatus(PSTR(""));
+      return flashTableMsg(CHATTER, CHATTER_COUNT, chatterIdx);
   }
 }
 
@@ -657,220 +690,114 @@ void drawFace(int hx, int hy, bool faceRight) {
   int e0 = faceRight ? hx + 2 : hx - 5;
   int e1 = faceRight ? hx + 7 : hx;
   int nose = faceRight ? hx + 10 : hx - 8;
-
   if (pose == SLEEP) {
     display.drawLine(e0, hy, e0 + 3, hy, BLACK);
     display.drawLine(e1, hy, e1 + 3, hy, BLACK);
-  } else if (pose == MISERABLE || pose == REJECT) {
+  } else {
     display.fillRect(e0, hy - 1, 3, 3, BLACK);
     display.fillRect(e1, hy - 1, 3, 3, BLACK);
-  } else if (pose == BORED) {
-    display.drawLine(e0, hy, e0 + 3, hy, BLACK);
-    display.drawLine(e1, hy + 1, e1 + 3, hy + 1, BLACK);
-  } else {
-    uint8_t ew = (dogLevel >= 4) ? 4 : 3;
-    display.fillRect(e0, hy - 1, ew, 3, BLACK);
-    display.fillRect(e1, hy - 1, ew, 3, BLACK);
     display.drawPixel(e0 + 1, hy - 1, WHITE);
     display.drawPixel(e1 + 1, hy - 1, WHITE);
-    if (dogLevel >= 3) {
-      display.drawPixel(e0 + 2, hy, WHITE);
-      display.drawPixel(e1 + 2, hy, WHITE);
-    }
   }
-
   display.fillRect(nose, hy + 2, 2, 2, BLACK);
-  if (pose == HAPPY || pose == PLAYING || pose == EATING) {
-    display.drawPixel(nose, hy + 4, WHITE);
-    display.drawPixel(nose + 1, hy + 5, WHITE);
-  }
 }
 
 void drawLegs(int x, int y, uint8_t tall) {
-  bool walk = (pose == WALK_L || pose == WALK_R || pose == PLAYING || pose == STRETCH);
-  int a = walk && (animPhase & 1) ? 2 : 0;
-  int b = walk && !(animPhase & 1) ? 2 : 0;
+  bool walk = (pose == WALK_L || pose == WALK_R || pose == PLAYING);
+  int a = (walk && (animPhase & 1)) ? 2 : 0;
+  int b = (walk && !(animPhase & 1)) ? 2 : 0;
   display.fillRect(x + 8, y + 14 + a, 3, tall, WHITE);
   display.fillRect(x + 14, y + 14 + b, 3, tall, WHITE);
   display.fillRect(x + 20, y + 14 + a, 3, tall, WHITE);
   display.fillRect(x + 25, y + 14 + b, 3, tall, WHITE);
 }
 
-void drawSparks(int x, int y) {
-  if (!animFrame) return;
-  display.drawPixel(x - 2, y + 2, WHITE);
-  display.drawPixel(x + 33, y + 4, WHITE);
-  display.drawPixel(x + 16, y - 8, WHITE);
+void drawGear(int x, int y, int hx) {
+  // Shared level gear — keeps flash small, still scales with level.
+  if (dogLevel >= 2) {
+    display.fillRect(x + 10, y + 11, 12, 2, BLACK);
+  }
+  if (dogLevel >= 3) {
+    display.fillRect(hx - 5, y + 1, 10, 2, WHITE);
+  }
+  if (dogLevel >= 4) {
+    display.fillRect(hx - 5, y - 3, 11, 3, WHITE);
+  }
+  if (dogLevel >= 5) {
+    display.fillRect(hx - 6, y - 6, 13, 3, WHITE);
+    display.fillRect(hx - 1, y - 8, 3, 2, WHITE);
+    if (animFrame) display.drawPixel(x + 16, y - 9, WHITE);
+  }
 }
 
 void drawSportFox(int x, int y) {
   bool faceRight = (pose == WALK_R || pose == REJECT);
   int hx = faceRight ? x + 22 : x + 10;
   uint8_t earH = 2 + dogLevel;
-  uint8_t bodyH = 6 + (dogLevel / 2);
-  uint8_t legH = 4 + (dogLevel >= 3 ? 2 : 0);
-
-  display.fillTriangle(hx - 5, y + 4, hx - 1, y + 4, hx - 3, y + 4 - earH, WHITE);
-  display.fillTriangle(hx + 1, y + 4, hx + 5, y + 4, hx + 4, y + 3 - earH, WHITE);
-  if (dogLevel >= 3) {
-    display.drawPixel(hx - 3, y + 5 - earH, BLACK);
-    display.drawPixel(hx + 4, y + 4 - earH, BLACK);
-  }
-
-  display.fillCircle(hx, y + 7, 4 + (dogLevel >= 4 ? 1 : 0), WHITE);
-  display.fillRect(x + 9, y + 8, 14 + (dogLevel >= 3 ? 2 : 0), bodyH, WHITE);
-  drawLegs(x, y, legH);
-
-  int tx = faceRight ? x + 3 : x + 29;
-  int th = 4 + dogLevel;
-  display.fillTriangle(tx, y + 10, tx + (faceRight ? -th : th), y + 10 - th,
-                       tx + (faceRight ? -1 : 1), y + 14, WHITE);
-
+  display.fillTriangle(hx - 4, y + 4, hx - 1, y + 4, hx - 3, y + 4 - earH, WHITE);
+  display.fillTriangle(hx + 1, y + 4, hx + 4, y + 4, hx + 3, y + 3 - earH, WHITE);
+  display.fillCircle(hx, y + 7, 5, WHITE);
+  display.fillRect(x + 9, y + 8, 14, 6 + dogLevel / 2, WHITE);
+  drawLegs(x, y, 4 + (dogLevel >= 3));
+  int tx = faceRight ? x + 4 : x + 28;
+  display.fillTriangle(tx, y + 10, tx + (faceRight ? -4 - dogLevel : 4 + dogLevel), y + 6,
+                       tx, y + 14, WHITE);
   drawFace(hx, y + 7, faceRight);
-
+  drawGear(x, y, hx);
   if (dogLevel >= 2) {
-    display.fillRect(x + 10, y + 11, 13, 2, BLACK);
-    display.drawPixel(x + 12, y + 10, WHITE);
-    display.drawPixel(x + 16, y + 9, WHITE);
-    display.drawPixel(x + 20, y + 10, WHITE);
-    int bx = x + (faceRight ? 31 : -3) + ((animPhase & 1) ? 1 : -1);
+    int bx = x + (faceRight ? 30 : -2) + ((animPhase & 1) ? 1 : 0);
     display.fillCircle(bx, y + 7, 2, WHITE);
-    display.drawPixel(bx, y + 7, BLACK);
   }
-  if (dogLevel >= 3) {
-    display.fillRect(hx - 6, y + 5, 13, 3, BLACK);
-    display.drawPixel(hx - 4, y + 6, WHITE);
-    display.drawPixel(hx + 3, y + 6, WHITE);
-    display.fillRect(hx - 6, y + 1, 12, 2, WHITE);
-  }
-  if (dogLevel >= 4) {
-    display.fillRect(hx - 6, y - 3, 13, 3, WHITE);
-    display.fillRect(faceRight ? hx + 5 : hx - 10, y - 1, 7, 2, WHITE);
-    display.fillTriangle(faceRight ? x + 2 : x + 28, y + 6,
-                         faceRight ? x - 4 : x + 35, y + 10,
-                         faceRight ? x + 4 : x + 30, y + 18, WHITE);
-  }
-  if (dogLevel >= 5) {
-    display.fillCircle(hx, y - 7, 3, WHITE);
-    display.fillRect(hx - 1, y - 4, 3, 3, WHITE);
-    display.drawPixel(hx, y - 7, BLACK);
-    drawSparks(x, y);
-    if (animPhase & 1) {
-      display.drawLine(faceRight ? x - 2 : x + 33, y + 8,
-                       faceRight ? x - 6 : x + 37, y + 8, WHITE);
-    }
-  }
+  if (dogLevel >= 3) display.fillRect(hx - 5, y + 5, 11, 2, BLACK); // shades
 }
 
 void drawChonkLoaf(int x, int y) {
   bool faceRight = (pose == WALK_R || pose == REJECT);
   int hx = faceRight ? x + 20 : x + 12;
-  uint8_t bodyR = 6 + dogLevel;
-
-  display.fillCircle(x + 16, y + 13, bodyR, WHITE);
-  display.fillCircle(hx, y + 7, 4 + (dogLevel >= 3 ? 1 : 0), WHITE);
-  display.fillCircle(hx - 4, y + 2, 2 + (dogLevel >= 4 ? 1 : 0), WHITE);
-  display.fillCircle(hx + 4, y + 2, 2 + (dogLevel >= 4 ? 1 : 0), WHITE);
-  display.fillRect(x + 7, y + 17, 6, 2 + (dogLevel >= 3 ? 1 : 0), WHITE);
-  display.fillRect(x + 19, y + 17, 6, 2 + (dogLevel >= 3 ? 1 : 0), WHITE);
-
-  display.drawPixel(x + 28, y + 12, WHITE);
-  display.drawPixel(x + 29, y + 11, WHITE);
-  display.drawPixel(x + 30, y + 12, WHITE);
-  if (dogLevel >= 3) {
-    display.drawPixel(x + 31, y + 13, WHITE);
-    display.drawPixel(x + 30, y + 14, WHITE);
-  }
-
+  display.fillCircle(x + 16, y + 13, 6 + dogLevel, WHITE);
+  display.fillCircle(hx, y + 7, 5, WHITE);
+  display.fillCircle(hx - 4, y + 2, 2, WHITE);
+  display.fillCircle(hx + 4, y + 2, 2, WHITE);
+  display.fillRect(x + 8, y + 17, 5, 2, WHITE);
+  display.fillRect(x + 19, y + 17, 5, 2, WHITE);
   drawFace(hx, y + 7, faceRight);
-  display.fillRect(faceRight ? hx + 3 : hx - 6, y + 8, 4, 3, WHITE);
-  display.fillRect(faceRight ? hx + 5 : hx - 6, y + 9, 2, 2, BLACK);
-
-  if (dogLevel >= 2) {
-    display.fillRect(x + 9, y + 12, 14, 3, BLACK);
-    display.fillRect(x + 14, y + 15, 5, 4, WHITE);
-    display.drawPixel(x + 16, y + 17, BLACK);
-  }
+  display.fillRect(faceRight ? hx + 3 : hx - 5, y + 8, 3, 2, BLACK);
+  drawGear(x, y, hx);
   if (dogLevel >= 3) {
-    display.fillTriangle(x + 6, y + 8, x + 26, y + 8, x + 16, y + 17, WHITE);
-    display.fillRect(x + 12, y + 8, 8, 2, BLACK);
-    display.fillCircle(x + 27, y + 9, 2, WHITE);
+    display.fillTriangle(x + 8, y + 9, x + 24, y + 9, x + 16, y + 16, WHITE);
   }
-  if (dogLevel >= 4) {
-    display.fillCircle(hx - 3, y - 3, 4, WHITE);
-    display.fillCircle(hx + 3, y - 4, 5, WHITE);
-    display.fillRect(hx - 5, y + 1, 11, 2, WHITE);
-  }
-  if (dogLevel >= 5) {
-    display.fillRect(hx - 7, y - 5, 15, 3, WHITE);
-    display.fillRect(hx - 5, y - 8, 3, 3, WHITE);
-    display.fillRect(hx - 1, y - 10, 3, 5, WHITE);
-    display.fillRect(hx + 4, y - 8, 3, 3, WHITE);
-    display.fillCircle(x - 3 + (animPhase & 1), y + 6, 2, WHITE);
-    display.drawPixel(x - 3, y + 6, BLACK);
-    display.fillCircle(x + 33, y + 4 + (animPhase == 2), 2, WHITE);
-    display.drawPixel(x + 33, y + 4, BLACK);
-    drawSparks(x, y);
-  }
+  if (dogLevel >= 4) display.fillCircle(hx, y - 2, 4, WHITE);
 }
 
 void drawBalancedDog(int x, int y) {
   bool faceRight = (pose == WALK_R || pose == REJECT);
   int hx = faceRight ? x + 22 : x + 10;
-  uint8_t headR = 5 + (dogLevel >= 3 ? 1 : 0);
-  uint8_t earL = 6 + dogLevel / 2;
-
-  display.fillRect(hx - 7, y + 3, 4, earL, WHITE);
-  display.fillRect(hx + 3, y + 3, 4, earL, WHITE);
-  if (dogLevel >= 3) {
-    display.fillRect(hx - 6, y + 4, 2, earL - 2, BLACK);
-    display.fillRect(hx + 4, y + 4, 2, earL - 2, BLACK);
-  }
-  display.fillCircle(hx, y + 7, headR, WHITE);
-  display.fillRect(x + 7, y + 9, 18, 7 + (dogLevel >= 4 ? 1 : 0), WHITE);
-  drawLegs(x, y, 3 + (dogLevel >= 3 ? 1 : 0));
-
+  display.fillRect(hx - 7, y + 3, 4, 6 + dogLevel / 2, WHITE);
+  display.fillRect(hx + 3, y + 3, 4, 6 + dogLevel / 2, WHITE);
+  display.fillCircle(hx, y + 7, 5 + (dogLevel >= 3), WHITE);
+  display.fillRect(x + 8, y + 9, 17, 7, WHITE);
+  drawLegs(x, y, 3 + (dogLevel >= 3));
   int tw = (animPhase & 1) ? -2 : 2;
-  int tTip = 31 + (dogLevel >= 4 ? 2 : 0);
-  display.fillTriangle(x + 27, y + 11, x + tTip, y + 8 + tw, x + 30, y + 14, WHITE);
-
+  display.fillTriangle(x + 27, y + 11, x + 31, y + 8 + tw, x + 30, y + 14, WHITE);
   drawFace(hx, y + 7, faceRight);
-
-  if (dogLevel >= 2) {
-    display.fillRect(x + 9, y + 11, 14, 3, BLACK);
-    display.drawLine(x + 9, y + 11, x + 22, y + 11, WHITE);
-    display.drawLine(x + 9, y + 13, x + 22, y + 13, WHITE);
-    display.fillTriangle(x + 15, y + 14, x + 18, y + 16, x + 15, y + 18, WHITE);
-    display.fillTriangle(x + 15, y + 14, x + 12, y + 16, x + 15, y + 18, WHITE);
-  }
+  drawGear(x, y, hx);
   if (dogLevel >= 3) {
-    display.fillTriangle(x + 26, y + 4, x + 35, y + 7, x + 28, y + 18, WHITE);
-    display.drawLine(x + 28, y + 7, x + 30, y + 15, BLACK);
+    display.fillTriangle(x + 27, y + 5, x + 34, y + 8, x + 28, y + 17, WHITE);
   }
   if (dogLevel >= 4) {
-    display.fillTriangle(hx - 6, y + 1, hx + 6, y + 1, hx, y - 8, WHITE);
-    display.fillRect(hx - 6, y + 1, 13, 2, WHITE);
-    display.fillRect(hx - 1, y - 10, 3, 3, WHITE);
-  }
-  if (dogLevel >= 5) {
-    display.fillRect(hx - 7, y - 4, 15, 3, WHITE);
-    display.fillRect(hx - 5, y - 7, 3, 3, WHITE);
-    display.fillRect(hx - 1, y - 9, 3, 5, WHITE);
-    display.fillRect(hx + 4, y - 7, 3, 3, WHITE);
-    display.drawPixel(hx, y - 10, WHITE);
-    display.fillTriangle(x - 2, y + 6, x + 5, y + 9, x - 1, y + 17, WHITE);
-    drawSparks(x, y);
+    display.fillTriangle(hx - 4, y + 1, hx + 4, y + 1, hx, y - 6, WHITE);
   }
 }
 
 void drawPet(int x, int y) {
   int dy = 3 - (int)dogLevel;
-  if (careStyle == STYLE_PLAYFUL) dy -= 1;
-  if (careStyle == STYLE_CHONKY) dy += 1;
-
-  if (careStyle == STYLE_PLAYFUL) drawSportFox(x, y + dy);
-  else if (careStyle == STYLE_CHONKY) drawChonkLoaf(x, y + dy);
-  else drawBalancedDog(x, y + dy);
+  if (careStyle == STYLE_PLAYFUL) {
+    drawSportFox(x, y + dy - 1);
+  } else if (careStyle == STYLE_CHONKY) {
+    drawChonkLoaf(x, y + dy + 1);
+  } else {
+    drawBalancedDog(x, y + dy);
+  }
 }
 
 void drawPant(int x, int y) {
@@ -965,6 +892,15 @@ void loop() {
       idlePose = IDLE_CHOICES[random(IDLE_CHOICE_COUNT)];
     }
     lastIdleChange = currentMillis;
+    rollChatter(currentMillis);
+  }
+
+  // Fresh buddy lines while awake (not while sleeping)
+  if (pose != SLEEP && currentMillis - lastChatterAt >= CHATTER_MS) {
+    if (pose == BORED) chatterIdx = random(MOVE_NAG_COUNT);
+    else if (pose == HUNGRY || pose == MISERABLE) chatterIdx = random(H2O_NAG_COUNT);
+    else rollChatter(currentMillis);
+    lastChatterAt = currentMillis;
   }
 
   if (showingLevelUp && currentMillis >= levelUpUntil) {
