@@ -4,7 +4,7 @@
 // Wiring: one push button between D2 and GND (uses the internal pull-up).
 //   single press  -> pet the dog
 //   double press  -> feed the dog
-//   hold 3 seconds -> show hunger / care gauges
+//   triple press  -> show hunger / care gauges
 //   hold 5 seconds -> turn OFF (hold 5s again to turn back ON)
 //   hold 10 seconds -> wipe memory and start a brand-new dog
 #include <Wire.h>
@@ -19,191 +19,13 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 const uint8_t BUTTON_PIN = 2;
 
 // ==========================================
-//   ANNOYING DOG PIXEL ART (32x20)
+//   THEMED PETS (drawn procedurally — flash-friendly)
+//   Sport  = fox athlete
+//   Chonk  = round loaf blob
+//   Balanced = classic dog
 // ==========================================
 const uint8_t SPRITE_W = 32;
 const uint8_t SPRITE_H = 20;
-
-const unsigned char PROGMEM dog_sit1[] = {
-  0x00,0x00,0x00,0x00,0x37,0xf3,0x00,0x00,0x3f,0xff,0x00,0x00,
-  0x3f,0xff,0xc0,0x00,0xf7,0xbf,0x80,0x00,0xff,0xff,0xf8,0x03,
-  0xf8,0x7f,0xfe,0x06,0xc9,0xef,0xff,0xff,0xf0,0x1f,0xff,0xff,
-  0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,
-  0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xfc,
-  0x3f,0xff,0xff,0xfc,0x38,0x70,0x0e,0x1c,0x38,0x70,0x0e,0x1c,
-  0x30,0x70,0x0e,0x10,0x00,0x60,0x08,0x00
-};
-const unsigned char PROGMEM dog_sit2[] = {
-  0x00,0x00,0x00,0x00,0x37,0xf3,0x00,0x00,0x3f,0xff,0x00,0x00,
-  0x3f,0xff,0xc0,0x00,0xf7,0xbf,0x80,0x06,0xff,0xff,0xf8,0x03,
-  0xf8,0x7f,0xfe,0x06,0xc9,0xef,0xff,0xf0,0xf0,0x1f,0xff,0xff,
-  0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,
-  0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xfc,
-  0x3f,0xff,0xff,0xfc,0x38,0x70,0x0e,0x1c,0x38,0x70,0x0e,0x1c,
-  0x30,0x70,0x0e,0x10,0x00,0x60,0x08,0x00
-};
-const unsigned char PROGMEM dog_walk_r1[] = {
-  0x00,0x00,0x00,0x00,0x00,0x00,0xcf,0xec,0x00,0x00,0xff,0xfc,
-  0x00,0x03,0xff,0xfc,0x00,0x01,0xfd,0xef,0xc0,0x1f,0xff,0xff,
-  0x60,0x7f,0xfe,0x1f,0xff,0xff,0xf7,0x93,0xff,0xff,0xf8,0x0f,
-  0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,
-  0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x3f,0xff,0xff,0xff,
-  0x3f,0xff,0xff,0xfc,0x3c,0x3c,0x3c,0x3c,0x3c,0x3c,0x3c,0x3c,
-  0x0c,0x0c,0x0c,0x0c,0x00,0x00,0x00,0x00
-};
-const unsigned char PROGMEM dog_walk_r2[] = {
-  0x00,0x00,0x00,0x00,0x00,0x00,0xcf,0xec,0x00,0x00,0xff,0xfc,
-  0x00,0x03,0xff,0xfc,0x00,0x01,0xfd,0xef,0xc0,0x1f,0xff,0xff,
-  0x60,0x7f,0xfe,0x1f,0xff,0xff,0xf7,0x93,0xff,0xff,0xf8,0x0f,
-  0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,
-  0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x3f,0xff,0xff,0xff,
-  0x3f,0xff,0xff,0xfc,0x0f,0x0f,0xf0,0xf0,0x0f,0x0f,0xf0,0xf0,
-  0x06,0x06,0x60,0x60,0x00,0x00,0x00,0x00
-};
-const unsigned char PROGMEM dog_walk_l1[] = {
-  0x00,0x00,0x00,0x00,0x37,0xf3,0x00,0x00,0x3f,0xff,0x00,0x00,
-  0x3f,0xff,0xc0,0x00,0xf7,0xbf,0x80,0x00,0xff,0xff,0xf8,0x03,
-  0xf8,0x7f,0xfe,0x06,0xc9,0xef,0xff,0xff,0xf0,0x1f,0xff,0xff,
-  0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,
-  0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xfc,
-  0x3f,0xff,0xff,0xfc,0x3c,0x3c,0x3c,0x3c,0x3c,0x3c,0x3c,0x3c,
-  0x30,0x30,0x30,0x30,0x00,0x00,0x00,0x00
-};
-const unsigned char PROGMEM dog_walk_l2[] = {
-  0x00,0x00,0x00,0x00,0x37,0xf3,0x00,0x00,0x3f,0xff,0x00,0x00,
-  0x3f,0xff,0xc0,0x00,0xf7,0xbf,0x80,0x00,0xff,0xff,0xf8,0x03,
-  0xf8,0x7f,0xfe,0x06,0xc9,0xef,0xff,0xff,0xf0,0x1f,0xff,0xff,
-  0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,
-  0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xfc,
-  0x3f,0xff,0xff,0xfc,0x0f,0x0f,0xf0,0xf0,0x0f,0x0f,0xf0,0xf0,
-  0x06,0x06,0x60,0x60,0x00,0x00,0x00,0x00
-};
-const unsigned char PROGMEM dog_sleep[] = {
-  0x00,0x00,0x00,0x00,0x37,0xf3,0x00,0x00,0x3f,0xff,0x00,0x00,
-  0x3f,0xff,0xc0,0x00,0xf7,0xbf,0x80,0x00,0xff,0xff,0xf8,0x03,
-  0xff,0xff,0xfe,0x06,0xe3,0x1f,0xff,0xff,0xf0,0x1f,0xff,0xff,
-  0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,
-  0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xfc,
-  0x3f,0xff,0xff,0xfc,0x38,0x70,0x0e,0x1c,0x38,0x70,0x0e,0x1c,
-  0x30,0x70,0x0e,0x10,0x00,0x60,0x08,0x00
-};
-const unsigned char PROGMEM dog_play[] = {
-  0x00,0x00,0x00,0x00,0x37,0xf3,0x00,0x00,0x3f,0xff,0x00,0x00,
-  0x3f,0xff,0xc0,0x00,0xf7,0xbf,0x80,0x00,0xff,0xff,0xf8,0x03,
-  0xf8,0x7f,0xfe,0x06,0xc9,0xef,0xff,0xff,0xf0,0x1f,0xff,0xff,
-  0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,
-  0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xfc,
-  0x3f,0xff,0xff,0xfc,0x3c,0x3c,0x3c,0x3c,0x3c,0x3c,0x3c,0x3c,
-  0x30,0x30,0x30,0x30,0x00,0x00,0x00,0x00
-};
-const unsigned char PROGMEM dog_shock[] = {
-  0x00,0x00,0x00,0x00,0x37,0xf3,0x00,0x00,0x3f,0xff,0x00,0x00,
-  0x3f,0xff,0xc0,0x00,0xf7,0xbf,0x80,0x00,0xff,0xff,0xf8,0x03,
-  0xe3,0x1f,0xfe,0x06,0xe3,0x1f,0xff,0xff,0xf0,0x1f,0xff,0xff,
-  0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,
-  0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xfc,
-  0x3f,0xff,0xff,0xfc,0x38,0x70,0x0e,0x1c,0x38,0x70,0x0e,0x1c,
-  0x30,0x70,0x0e,0x10,0x00,0x60,0x08,0x00
-};
-const unsigned char PROGMEM dog_bored[] = {
-  0x00,0x00,0x00,0x00,0x37,0xf3,0x00,0x00,0x3f,0xff,0x00,0x00,
-  0x3f,0xff,0xc0,0x00,0xf7,0xbf,0x80,0x00,0xff,0xff,0xf8,0x03,
-  0xfc,0xff,0xfe,0x06,0xc9,0xef,0xff,0xff,0xf0,0x1f,0xff,0xff,
-  0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,
-  0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xfc,
-  0x3f,0xff,0xff,0xfc,0x38,0x70,0x0e,0x1c,0x38,0x70,0x0e,0x1c,
-  0x30,0x70,0x0e,0x10,0x00,0x60,0x08,0x00
-};
-const unsigned char PROGMEM dog_beg[] = {
-  0x00,0x00,0x00,0x00,0x37,0xf3,0x00,0x00,0x3f,0xff,0x00,0x00,
-  0x3f,0xff,0xc0,0x00,0xf7,0xbf,0x80,0x00,0xff,0xff,0xf8,0x03,
-  0xe0,0x1f,0xfe,0x06,0xc1,0x0f,0xff,0xff,0xe0,0x1f,0xff,0xff,
-  0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,
-  0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xfc,
-  0x3f,0xff,0xff,0xfc,0x38,0x70,0x0e,0x1c,0x38,0x70,0x0e,0x1c,
-  0x30,0x70,0x0e,0x10,0x00,0x60,0x08,0x00
-};
-const unsigned char PROGMEM dog_eat[] = {
-  0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
-  0x3f,0xff,0xc0,0x00,0xf7,0xbf,0x80,0x00,0xff,0xff,0xf8,0x03,
-  0xf8,0x7f,0xfe,0x06,0xc9,0xef,0xff,0xff,0xf0,0x1f,0xff,0xff,
-  0xf0,0x3f,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,
-  0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xfc,
-  0x3f,0xff,0xff,0xfc,0x38,0x70,0x0e,0x1c,0x38,0x70,0x0e,0x1c,
-  0x30,0x70,0x0e,0x10,0x00,0x60,0x08,0x00
-};
-const unsigned char PROGMEM dog_groom1[] = {
-  0x00,0x00,0x00,0x00,0x37,0xf3,0x00,0x00,0x3f,0xff,0x00,0x00,
-  0x3f,0xff,0xc0,0x00,0xf7,0xbf,0x80,0x00,0xff,0xff,0xf8,0x03,
-  0xf8,0x7f,0xfe,0x06,0xc9,0xef,0xff,0xff,0xf0,0x1f,0xff,0xff,
-  0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,
-  0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xfc,
-  0x3f,0xff,0xff,0xfc,0x38,0x70,0x0e,0x1c,0x38,0x70,0x0e,0x1c,
-  0x30,0x70,0x0e,0x10,0x00,0x60,0x08,0x00
-};
-const unsigned char PROGMEM dog_groom2[] = {
-  0x00,0x00,0x00,0x00,0x37,0xf3,0x00,0x00,0x3f,0xff,0x00,0x00,
-  0x3f,0xff,0xc0,0x00,0xf7,0xbf,0x80,0x00,0xff,0xff,0xf8,0x03,
-  0xf8,0x7f,0xfe,0x06,0xc9,0xef,0xff,0xff,0xf0,0x1f,0xff,0xff,
-  0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,
-  0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xfc,
-  0x3f,0xff,0xff,0xfc,0x38,0x70,0x0e,0x1c,0x38,0x70,0x0e,0x1c,
-  0x30,0x70,0x0e,0x10,0x00,0x60,0x08,0x00
-};
-const unsigned char PROGMEM dog_stretch1[] = {
-  0x00,0x00,0x00,0x00,0x37,0xf3,0x00,0x00,0x3f,0xff,0x00,0x00,
-  0x3f,0xff,0xc0,0x00,0xf7,0xbf,0x80,0x00,0xff,0xff,0xf8,0x03,
-  0xf8,0x7f,0xfe,0x06,0xc9,0xef,0xff,0xff,0xf0,0x1f,0xff,0xff,
-  0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,
-  0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xfc,
-  0x3f,0xff,0xff,0xfc,0xf0,0xf0,0x0f,0x0f,0xf0,0xf0,0x0f,0x0f,
-  0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
-};
-const unsigned char PROGMEM dog_stretch2[] = {
-  0x00,0x00,0x00,0x00,0x37,0xf3,0x00,0x00,0x3f,0xff,0x00,0x00,
-  0x3f,0xff,0xc0,0x00,0xf7,0xbf,0x80,0x00,0xff,0xff,0xf8,0x03,
-  0xf8,0x7f,0xfe,0x06,0xc9,0xef,0xff,0xff,0xf0,0x1f,0xff,0xff,
-  0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,
-  0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xfc,
-  0x3f,0xff,0xff,0xfc,0x78,0x78,0x1e,0x1e,0x78,0x78,0x1e,0x1e,
-  0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
-};
-const unsigned char PROGMEM dog_happy1[] = {
-  0x00,0x00,0x00,0x00,0x37,0xf3,0x00,0x00,0x3f,0xff,0x00,0x00,
-  0x3f,0xff,0xc0,0x00,0xf7,0xbf,0x80,0x00,0xff,0xff,0xf8,0x03,
-  0xf8,0x7f,0xfe,0x06,0xc9,0xef,0xff,0xff,0xf0,0x1f,0xff,0xff,
-  0xfc,0x7f,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,
-  0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xfc,
-  0x3f,0xff,0xff,0xfc,0x38,0x70,0x0e,0x1c,0x38,0x70,0x0e,0x1c,
-  0x30,0x70,0x0e,0x10,0x00,0x60,0x08,0x00
-};
-const unsigned char PROGMEM dog_happy2[] = {
-  0x00,0x00,0x00,0x00,0x37,0xf3,0x00,0x00,0x3f,0xff,0x00,0x00,
-  0x3f,0xff,0xc0,0x00,0xf7,0xbf,0x80,0x06,0xff,0xff,0xf8,0x03,
-  0xf8,0x7f,0xfe,0x06,0xc9,0xef,0xff,0xf0,0xf0,0x1f,0xff,0xff,
-  0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,
-  0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xfc,
-  0x3f,0xff,0xff,0xfc,0x38,0x70,0x0e,0x1c,0x38,0x70,0x0e,0x1c,
-  0x30,0x70,0x0e,0x10,0x00,0x60,0x08,0x00
-};
-const unsigned char PROGMEM dog_reject1[] = {
-  0x00,0x00,0x00,0x00,0x00,0x00,0xcf,0xec,0x00,0x00,0xff,0xfc,
-  0x00,0x03,0xff,0xfc,0x00,0x01,0xfd,0xef,0xc0,0x1f,0xff,0xff,
-  0x60,0x7f,0xfe,0x1f,0xff,0xff,0xf7,0x93,0xff,0xff,0xf8,0x0f,
-  0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,
-  0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x3f,0xff,0xff,0xff,
-  0x3f,0xff,0xff,0xfc,0x38,0x70,0x0e,0x1c,0x38,0x70,0x0e,0x1c,
-  0x08,0x70,0x0e,0x0c,0x00,0x10,0x06,0x00
-};
-const unsigned char PROGMEM dog_reject2[] = {
-  0x00,0x00,0x00,0x00,0x00,0x00,0xcf,0xec,0x00,0x00,0xff,0xfc,
-  0x00,0x03,0xff,0xfc,0x60,0x01,0xfd,0xef,0xc0,0x1f,0xff,0xff,
-  0x60,0x7f,0xfe,0x1f,0x0f,0xff,0xf7,0x93,0xff,0xff,0xf8,0x0f,
-  0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,
-  0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x3f,0xff,0xff,0xff,
-  0x3f,0xff,0xff,0xfc,0x38,0x70,0x0e,0x1c,0x38,0x70,0x0e,0x1c,
-  0x08,0x70,0x0e,0x0c,0x00,0x10,0x06,0x00
-};
 
 enum Pose {
   WALK_R, WALK_L, SIT, SLEEP, GROOM, STRETCH, HAPPY,
@@ -216,7 +38,7 @@ const Pose IDLE_CHOICES[] = { WALK_R, WALK_L, SIT, GROOM, STRETCH, HAPPY };
 const uint8_t IDLE_CHOICE_COUNT = sizeof(IDLE_CHOICES) / sizeof(IDLE_CHOICES[0]);
 
 int dogX = 48;
-const int dogY = 40; // Locks 32x20 dog to the bottom grassline
+const int dogY = 40; // locks pet to the bottom grassline
 unsigned long lastIdleChange = 0;
 unsigned long lastFrameUpdate = 0;
 unsigned long lastFunDrain = 0;
@@ -244,15 +66,21 @@ const unsigned long IDLE_CHANGE_MS = 2400; // swap goofy idle loops often
 const unsigned long NAP_AFTER_MS = 20000;  // no interaction -> dog naps
 const unsigned long FRAME_MS = 130;        // frantic derpy animation tick
 const unsigned long DAY_MS = 86400000UL;   // one powered-on day
+const unsigned long BATTERY_MS = 2000;     // refresh battery % every 2s
+
+// Board VCC as battery % (uses internal 1.1V bandgap; no extra wiring).
+// 5.0V = 100%, 3.3V = 0%.
+unsigned long lastBatteryAt = 0;
+uint8_t batteryPct = 100;
 
 // --- BUTTON ENGINE ---
-// single tap = pet, double tap = feed
-// hold 3s = show hunger/care gauges
+// single tap = pet, double tap = feed, triple tap = show gauges
 // hold 5s = power toggle (off / on)
 // hold 10s = full reset
 const unsigned long DEBOUNCE_MS = 40;
-const unsigned long DOUBLE_GAP_MS = 600;
-const unsigned long STATS_HOLD_MS = 3000;   // show gauges
+const unsigned long MULTI_GAP_MS = 600;     // window between taps
+const unsigned long STATS_SHOW_MS = 3500;   // how long gauges stay after triple tap
+const unsigned long POWER_HINT_MS = 2000;   // start showing power-off progress
 const unsigned long POWER_HOLD_MS = 5000;   // turn off / on
 const unsigned long LONG_PRESS_MS = 10000;  // factory reset
 bool rawButton = HIGH;
@@ -266,7 +94,8 @@ bool longPressDone = false;
 bool showingReset = false;
 bool showingLevelUp = false;
 unsigned long levelUpUntil = 0;
-bool powerOn = true;         // false = screen off / sleeping deeply
+unsigned long statsUntil = 0;    // gauges visible until this time
+bool powerOn = true;             // false = screen off / sleeping deeply
 
 // --- EEPROM (survives power-off) ---
 const uint8_t EEPROM_MAGIC = 0xC9; // bumped for care-style fields
@@ -404,6 +233,28 @@ void markDirty() {
   stateDirty = true;
 }
 
+// Estimate board supply from the 1.1V internal bandgap (no battery pin needed).
+uint16_t readVccMv() {
+  ADMUX = _BV(REFS0) | _BV(MUX3) | _BV(MUX2) | _BV(MUX1);
+  delay(2);
+  ADCSRA |= _BV(ADSC);
+  while (bit_is_set(ADCSRA, ADSC)) {
+    // wait
+  }
+  uint16_t adc = ADC;
+  if (adc == 0) return 5000;
+  return (uint16_t)(1125300L / adc);  // 1.1V * 1023 * 1000 / adc
+}
+
+void updateBattery(unsigned long now) {
+  if (lastBatteryAt != 0 && now - lastBatteryAt < BATTERY_MS) return;
+  lastBatteryAt = now;
+  uint16_t mv = readVccMv();
+  if (mv <= 3300) batteryPct = 0;
+  else if (mv >= 5000) batteryPct = 100;
+  else batteryPct = (uint8_t)((mv - 3300UL) * 100UL / 1700UL);
+}
+
 void factoryReset(unsigned long now) {
   fun = 70;
   food = 70;
@@ -484,6 +335,7 @@ void setup() {
   loadState();
   loadDogName(nameIndex);
   lastInteractAt = millis();
+  updateBattery(lastInteractAt);
 }
 
 void noteInteraction(unsigned long now) {
@@ -589,8 +441,6 @@ void readButton(unsigned long now) {
       } else if (held >= POWER_HOLD_MS) {
         togglePower(now);             // 5s release -> flip on/off
         clickCount = 0;
-      } else if (held >= STATS_HOLD_MS) {
-        clickCount = 0;               // was just peeking at gauges
       } else {
         clickCount++;
         lastClickAt = now;
@@ -615,10 +465,16 @@ void readButton(unsigned long now) {
 
   if (longPressDone || stableButton == LOW) return;
 
-  if (clickCount >= 2) {
+  // Wait for the multi-tap window so 1 / 2 / 3 presses can be told apart.
+  if (clickCount == 0 || now - lastClickAt <= MULTI_GAP_MS) return;
+
+  if (clickCount >= 3) {
+    statsUntil = now + STATS_SHOW_MS;
+    clickCount = 0;
+  } else if (clickCount == 2) {
     feedDog(now);
     clickCount = 0;
-  } else if (clickCount == 1 && now - lastClickAt > DOUBLE_GAP_MS) {
+  } else {
     playWithDog(now);
     clickCount = 0;
   }
@@ -665,17 +521,17 @@ void drawCareGauge(int y) {
 const char *levelUpTitle() {
   if (careStyle == STYLE_PLAYFUL) {
     switch (dogLevel) {
-      case 2:  return PSTR("BALL ROOKIE");
-      case 3:  return PSTR("ZOOM CADET");
-      case 4:  return PSTR("TRACK STAR");
-      default: return PSTR("ZOOM CHAMPION");
+      case 2:  return PSTR("FOX ROOKIE");
+      case 3:  return PSTR("ZOOM FOX");
+      case 4:  return PSTR("TRACK FOX");
+      default: return PSTR("ACE FOX");
     }
   }
   if (careStyle == STYLE_CHONKY) {
     switch (dogLevel) {
-      case 2:  return PSTR("SNACK PUP");
+      case 2:  return PSTR("SNACK LOAF");
       case 3:  return PSTR("BIG LOAF");
-      case 4:  return PSTR("CHEF CHONK");
+      case 4:  return PSTR("CHEF LOAF");
       default: return PSTR("SUPREME LOAF");
     }
   }
@@ -706,6 +562,11 @@ void drawPetHeader() {
   snprintf(meta, sizeof(meta), "Day%u Lv%u", ageDays, dogLevel);
   display.setCursor(SCREEN_WIDTH - strlen(meta) * 6, 0);
   display.print(meta);
+
+  char bat[6];
+  snprintf(bat, sizeof(bat), "%u%%", batteryPct);
+  display.setCursor(SCREEN_WIDTH - strlen(bat) * 6, 8);
+  display.print(bat);
 }
 
 void printCentered(int y, const char *text) {
@@ -756,15 +617,15 @@ const char *flashStatus(const char *p) {
 
 const char *statusText() {
   if (showingLevelUp) {
-    if (careStyle == STYLE_PLAYFUL) return flashStatus(PSTR("SPORTS DOG!!"));
-    if (careStyle == STYLE_CHONKY) return flashStatus(PSTR("CHONK EVOLVED"));
+    if (careStyle == STYLE_PLAYFUL) return flashStatus(PSTR("SPORT FOX!!"));
+    if (careStyle == STYLE_CHONKY) return flashStatus(PSTR("LOAF EVOLVED"));
     return flashStatus(PSTR("GOOD DOG!!"));
   }
   if (showingReset) return flashStatus(PSTR("uhhh... who am i"));
   if (holdMs >= POWER_HOLD_MS && holdMs < LONG_PRESS_MS) {
     return flashStatus(PSTR("keep hold: reset"));
   }
-  if (holdMs >= STATS_HOLD_MS && holdMs < POWER_HOLD_MS) {
+  if (holdMs >= POWER_HINT_MS && holdMs < POWER_HOLD_MS) {
     return flashStatus(PSTR("release: turn off"));
   }
   if (showingBonk) return flashStatus(PSTR("BONK"));
@@ -803,118 +664,172 @@ const char *statusText() {
   }
 }
 
-void drawFormBody(int x, int y) {
-  // Distinct silhouette per evolution form (visible on mono OLED).
-  if (careStyle == STYLE_CHONKY && dogLevel >= 2) {
-    uint8_t r = 4 + (dogLevel >= 4 ? 2 : 0) + (dogLevel >= 5 ? 1 : 0);
-    display.fillCircle(x + 16, y + 15, r, WHITE);
-    display.fillRect(x + 9, y + 15, 16, 4, WHITE);
-    display.fillRect(x + 8, y + 18, 5, 2, WHITE);
-    display.fillRect(x + 20, y + 18, 5, 2, WHITE);
-  } else if (careStyle == STYLE_PLAYFUL && dogLevel >= 2) {
-    display.fillRect(x + 10, y + 15, 12, 2, BLACK);
-    int bx = x - 5 + ((animPhase == 1) ? 2 : ((animPhase == 3) ? -1 : 0));
-    int by = y + 9 - ((animPhase & 1) ? 2 : 0);
-    display.fillCircle(bx, by, 2, WHITE);
-    display.drawPixel(bx, by, BLACK);
-  } else if (careStyle == STYLE_BALANCED && dogLevel >= 2) {
-    display.fillRect(x + 12, y - 1, 4, 2, WHITE);
-    display.drawPixel(x + 13, y - 2, WHITE);
+void drawFace(int hx, int hy, bool faceRight) {
+  int e0 = faceRight ? hx + 2 : hx - 5;
+  int e1 = faceRight ? hx + 7 : hx;
+  int nose = faceRight ? hx + 10 : hx - 8;
+
+  if (pose == SLEEP) {
+    display.drawLine(e0, hy, e0 + 3, hy, BLACK);
+    display.drawLine(e1, hy, e1 + 3, hy, BLACK);
+  } else if (pose == MISERABLE || pose == REJECT) {
+    display.fillRect(e0, hy - 1, 3, 3, BLACK);
+    display.fillRect(e1, hy - 1, 3, 3, BLACK);
+  } else if (pose == BORED) {
+    display.drawLine(e0, hy, e0 + 3, hy, BLACK);
+    display.drawLine(e1, hy + 1, e1 + 3, hy + 1, BLACK);
+  } else {
+    display.fillRect(e0, hy - 1, 3, 3, BLACK);
+    display.fillRect(e1, hy - 1, 3, 3, BLACK);
+    display.drawPixel(e0 + 1, hy - 1, WHITE);
+    display.drawPixel(e1 + 1, hy - 1, WHITE);
+  }
+
+  display.fillRect(nose, hy + 2, 2, 2, BLACK);
+  if (pose == HAPPY || pose == PLAYING || pose == EATING) {
+    display.drawPixel(nose, hy + 4, WHITE);
+    display.drawPixel(nose + 1, hy + 5, WHITE);
   }
 }
 
-void drawLevelLook(int x, int y) {
+void drawLegs(int x, int y, uint8_t tall) {
+  bool walk = (pose == WALK_L || pose == WALK_R || pose == PLAYING || pose == STRETCH);
+  int a = walk && (animPhase & 1) ? 2 : 0;
+  int b = walk && !(animPhase & 1) ? 2 : 0;
+  display.fillRect(x + 8, y + 14 + a, 3, tall, WHITE);
+  display.fillRect(x + 14, y + 14 + b, 3, tall, WHITE);
+  display.fillRect(x + 20, y + 14 + a, 3, tall, WHITE);
+  display.fillRect(x + 25, y + 14 + b, 3, tall, WHITE);
+}
+
+void drawSportFox(int x, int y) {
+  // Lean fox: pointed ears, slim body, bushy tail, athletic stance.
+  bool faceRight = (pose == WALK_R || pose == REJECT);
+  int hx = faceRight ? x + 22 : x + 10;
+
+  display.fillTriangle(hx - 4, y + 4, hx - 1, y + 4, hx - 3, y - 2, WHITE);
+  display.fillTriangle(hx + 1, y + 4, hx + 4, y + 4, hx + 3, y - 3, WHITE);
+  display.fillCircle(hx, y + 7, 5, WHITE);
+  display.fillRect(x + 8, y + 8, 16, 8, WHITE);
+  drawLegs(x, y, 5);
+
+  // Bushy upturned tail
+  int tx = faceRight ? x + 4 : x + 28;
+  display.fillTriangle(tx, y + 10, tx + (faceRight ? -4 : 4), y + 4,
+                       tx + (faceRight ? -1 : 1), y + 14, WHITE);
+
+  drawFace(hx, y + 7, faceRight);
+
   if (dogLevel >= 2) {
-    if (careStyle == STYLE_PLAYFUL) {
-      display.fillRect(x + 7, y + 11, 17, 3, BLACK);
-      display.fillCircle(x + 3, y + 14, 2, WHITE);
-      display.drawPixel(x + 3, y + 14, BLACK);
-    } else if (careStyle == STYLE_CHONKY) {
-      display.fillRect(x + 6, y + 12, 20, 3, BLACK);
-      display.fillRect(x + 14, y + 15, 5, 4, WHITE);
-    } else {
-      display.fillRect(x + 7, y + 11, 17, 3, BLACK);
-      display.drawLine(x + 7, y + 11, x + 23, y + 11, WHITE);
-      display.drawLine(x + 7, y + 13, x + 23, y + 13, WHITE);
-      display.fillRect(x + 14, y + 14, 4, 5, WHITE);
-      display.drawPixel(x + 15, y + 16, BLACK);
-    }
+    display.fillRect(x + 10, y + 11, 12, 2, BLACK); // sport collar
+    int bx = x + (faceRight ? 30 : -2) + ((animPhase & 1) ? 1 : -1);
+    display.fillCircle(bx, y + 8, 2, WHITE);
+    display.drawPixel(bx, y + 8, BLACK);
   }
-
   if (dogLevel >= 3) {
-    if (careStyle == STYLE_PLAYFUL) {
-      display.fillRect(x + 4, y + 2, 15, 3, WHITE);
-      display.fillRect(x + 4, y + 3, 15, 1, BLACK);
-    } else if (careStyle == STYLE_CHONKY) {
-      display.fillTriangle(x + 5, y + 9, x + 18, y + 9, x + 11, y + 18, WHITE);
-      display.drawLine(x + 8, y + 12, x + 14, y + 12, BLACK);
-    } else {
-      display.fillTriangle(x - 3, y + 8, x + 6, y + 10, x - 3, y + 18, WHITE);
-      display.drawLine(x - 2, y + 10, x - 2, y + 16, BLACK);
-    }
+    display.fillRect(hx - 6, y + 1, 12, 2, WHITE); // headband
+    display.fillRect(hx - 6, y + 2, 12, 1, BLACK);
   }
-
-  if (dogLevel == 4) {
-    if (careStyle == STYLE_PLAYFUL) {
-      display.fillRect(x + 5, y - 3, 18, 4, WHITE);
-      display.fillRect(x + 1, y - 1, 9, 2, WHITE);
-    } else if (careStyle == STYLE_CHONKY) {
-      display.fillRect(x + 9, y - 2, 12, 4, WHITE);
-      display.fillCircle(x + 15, y - 6, 5, WHITE);
-      display.fillRect(x + 12, y - 4, 2, 2, BLACK);
-    } else {
-      display.fillTriangle(x + 6, y + 1, x + 20, y + 1, x + 13, y - 10, WHITE);
-      display.fillRect(x + 6, y + 1, 15, 2, WHITE);
-      display.fillRect(x + 12, y - 12, 3, 3, WHITE);
-    }
+  if (dogLevel >= 4) {
+    display.fillRect(hx - 5, y - 4, 11, 3, WHITE); // cap
   }
-
   if (dogLevel >= 5) {
-    if (careStyle == STYLE_PLAYFUL) {
-      display.fillCircle(x + 14, y - 5, 4, WHITE);
-      display.fillRect(x + 12, y - 1, 5, 6, WHITE);
-      display.drawPixel(x + 14, y - 5, BLACK);
-      display.fillTriangle(x + 28, y + 4, x + 36, y + 6, x + 30, y + 16, WHITE);
-      if (animFrame) {
-        display.fillCircle(x - 4, y + 6, 2, WHITE);
-        display.drawPixel(x - 4, y + 6, BLACK);
-      }
-    } else if (careStyle == STYLE_CHONKY) {
-      display.fillRect(x + 7, y - 3, 16, 4, WHITE);
-      display.fillRect(x + 9, y - 6, 3, 3, WHITE);
-      display.fillRect(x + 14, y - 7, 3, 4, WHITE);
-      display.fillRect(x + 19, y - 6, 3, 3, WHITE);
-      display.fillCircle(x - 2 + (animPhase & 1), y + 8, 1, WHITE);
-      display.fillCircle(x + 31, y + 6 + (animPhase == 2 ? 1 : 0), 1, WHITE);
-      display.fillCircle(x + 28, y + 14, 1, WHITE);
-    } else {
-      display.fillRect(x + 7, y - 3, 16, 4, WHITE);
-      display.fillRect(x + 7, y - 6, 3, 3, WHITE);
-      display.fillRect(x + 13, y - 8, 4, 5, WHITE);
-      display.fillRect(x + 20, y - 6, 3, 3, WHITE);
-      display.fillTriangle(x + 27, y + 5, x + 35, y + 8, x + 29, y + 19, WHITE);
-      display.drawLine(x + 28, y + 8, x + 30, y + 16, BLACK);
-      if (animFrame) {
-        display.drawPixel(x + 3, y - 4, WHITE);
-        display.drawPixel(x + 24, y - 5, WHITE);
-      }
-    }
+    display.fillCircle(hx, y - 6, 3, WHITE); // trophy ball
+    display.fillRect(hx - 1, y - 3, 3, 3, WHITE);
   }
 }
 
-void drawDog(int x, int y, const unsigned char *bitmap) {
-  int dy = (dogLevel <= 1) ? 4 : 0;
-  if (careStyle == STYLE_PLAYFUL && dogLevel >= 2) dy -= 1;
-  if (careStyle == STYLE_CHONKY && dogLevel >= 2) dy += 1;
-  if (dogLevel >= 5 && careStyle == STYLE_BALANCED) dy -= 1;
+void drawChonkLoaf(int x, int y) {
+  // Round food blob / piglet loaf.
+  bool faceRight = (pose == WALK_R || pose == REJECT);
+  int hx = faceRight ? x + 20 : x + 12;
+  uint8_t bodyR = 7 + (dogLevel >= 3 ? 1 : 0) + (dogLevel >= 5 ? 1 : 0);
 
-  display.drawBitmap(x, y + dy, bitmap, SPRITE_W, SPRITE_H, WHITE);
-  drawFormBody(x, y + dy);
-  drawLevelLook(x, y + dy);
+  display.fillCircle(x + 16, y + 12, bodyR, WHITE);
+  display.fillCircle(hx, y + 7, 5, WHITE);
+  // Tiny ears
+  display.fillCircle(hx - 4, y + 2, 2, WHITE);
+  display.fillCircle(hx + 4, y + 2, 2, WHITE);
+  // Stubby feet
+  display.fillRect(x + 8, y + 17, 5, 2, WHITE);
+  display.fillRect(x + 19, y + 17, 5, 2, WHITE);
+  // Curly tail
+  display.drawPixel(x + 28, y + 12, WHITE);
+  display.drawPixel(x + 29, y + 11, WHITE);
+  display.drawPixel(x + 30, y + 12, WHITE);
+
+  drawFace(hx, y + 7, faceRight);
+  // Snout plate
+  display.fillRect(faceRight ? hx + 3 : hx - 6, y + 8, 4, 3, WHITE);
+  display.fillRect(faceRight ? hx + 5 : hx - 6, y + 9, 2, 2, BLACK);
+
+  if (dogLevel >= 2) {
+    display.fillRect(x + 10, y + 12, 12, 2, BLACK);
+    display.fillRect(x + 14, y + 14, 4, 3, WHITE); // bell
+  }
+  if (dogLevel >= 3) {
+    display.fillTriangle(x + 8, y + 8, x + 24, y + 8, x + 16, y + 16, WHITE); // bib
+    display.drawLine(x + 12, y + 11, x + 20, y + 11, BLACK);
+  }
+  if (dogLevel >= 4) {
+    display.fillCircle(hx, y - 2, 4, WHITE); // chef puff
+    display.fillRect(hx - 4, y + 1, 9, 2, WHITE);
+  }
+  if (dogLevel >= 5) {
+    display.fillRect(hx - 6, y - 5, 13, 3, WHITE); // snack crown
+    display.fillRect(hx - 4, y - 7, 2, 2, WHITE);
+    display.fillRect(hx + 2, y - 7, 2, 2, WHITE);
+  }
+}
+
+void drawBalancedDog(int x, int y) {
+  // Classic cute dog.
+  bool faceRight = (pose == WALK_R || pose == REJECT);
+  int hx = faceRight ? x + 22 : x + 10;
+
+  // Floppy ears
+  display.fillRect(hx - 7, y + 3, 4, 7, WHITE);
+  display.fillRect(hx + 3, y + 3, 4, 7, WHITE);
+  display.fillCircle(hx, y + 7, 6, WHITE);
+  display.fillRect(x + 8, y + 9, 17, 8, WHITE);
+  drawLegs(x, y, 4);
+
+  // Wagging tail
+  int tw = (animPhase & 1) ? -2 : 2;
+  display.fillTriangle(x + 27, y + 11, x + 31, y + 8 + tw, x + 30, y + 14, WHITE);
+
+  drawFace(hx, y + 7, faceRight);
+
+  if (dogLevel >= 2) {
+    display.fillRect(x + 10, y + 12, 12, 2, BLACK);
+    display.drawPixel(x + 15, y + 14, WHITE);
+    display.drawPixel(x + 17, y + 14, WHITE);
+    display.drawPixel(x + 16, y + 15, WHITE); // heart tag
+  }
+  if (dogLevel >= 3) {
+    display.fillTriangle(x + 26, y + 5, x + 33, y + 8, x + 28, y + 17, WHITE); // cape
+  }
+  if (dogLevel >= 4) {
+    display.fillTriangle(hx - 5, y + 1, hx + 5, y + 1, hx, y - 6, WHITE); // crest
+  }
+  if (dogLevel >= 5) {
+    display.fillRect(hx - 6, y - 4, 13, 3, WHITE);
+    display.fillRect(hx - 4, y - 6, 2, 2, WHITE);
+    display.fillRect(hx + 2, y - 6, 2, 2, WHITE);
+  }
+}
+
+void drawPet(int x, int y) {
+  int dy = (dogLevel <= 1) ? 2 : 0;
+  if (careStyle == STYLE_PLAYFUL) dy -= 1;
+  if (careStyle == STYLE_CHONKY) dy += 1;
+
+  if (careStyle == STYLE_PLAYFUL) drawSportFox(x, y + dy);
+  else if (careStyle == STYLE_CHONKY) drawChonkLoaf(x, y + dy);
+  else drawBalancedDog(x, y + dy);
 }
 
 void drawPant(int x, int y) {
-  // Big dumb tongue
   display.drawLine(x + 7, y + 11, x + 7, y + 14, WHITE);
   display.drawPixel(x + 8, y + 14, WHITE);
   display.drawPixel(x + 6, y + 14, WHITE);
@@ -950,6 +865,8 @@ void loop() {
     delay(50);
     return;
   }
+
+  updateBattery(currentMillis);
 
   // Count age while powered and preserve completed days in EEPROM.
   if (currentMillis - lastAgeDayAt >= DAY_MS) {
@@ -1072,8 +989,8 @@ void loop() {
   // Persistent name and powered-on age
   drawPetHeader();
 
-  // Need gauges: auto when low, or hold 3s to inspect anytime
-  bool showStats = (holdMs >= STATS_HOLD_MS);
+  // Need gauges: auto when low, or triple-tap to inspect anytime
+  bool showStats = (currentMillis < statsUntil);
   if (showStats || fun <= LOW_LEVEL) {
     drawGauge(9, "PLAY", fun, fun <= CRITICAL_LEVEL && animFrame);
   }
@@ -1096,9 +1013,9 @@ void loop() {
     printCentered(showStats ? 42 : 27, statusText());
   }
 
-  // 3s..5s fills toward power-off; 5s..10s fills toward factory reset.
-  if (holdMs >= STATS_HOLD_MS && holdMs < LONG_PRESS_MS) {
-    unsigned long start = (holdMs < POWER_HOLD_MS) ? STATS_HOLD_MS : POWER_HOLD_MS;
+  // 2s..5s fills toward power-off; 5s..10s fills toward factory reset.
+  if (holdMs >= POWER_HINT_MS && holdMs < LONG_PRESS_MS) {
+    unsigned long start = (holdMs < POWER_HOLD_MS) ? POWER_HINT_MS : POWER_HOLD_MS;
     unsigned long end = (holdMs < POWER_HOLD_MS) ? POWER_HOLD_MS : LONG_PRESS_MS;
     int fillW = (int)(((holdMs - start) * 100UL) / (end - start));
     if (fillW > 100) fillW = 100;
@@ -1140,18 +1057,18 @@ void loop() {
 
   switch (pose) {
     case SIT:
-      drawDog(x + tip[animPhase], y + softBob[animPhase], (animPhase & 1) ? dog_sit2 : dog_sit1);
+      drawPet(x + tip[animPhase], y + softBob[animPhase]);
       if (careStyle == STYLE_PLAYFUL && (animPhase & 1)) drawPant(x, y + softBob[animPhase]);
       else if (careStyle != STYLE_PLAYFUL && animPhase == 2) drawPant(x, y + softBob[animPhase]);
       break;
 
     case WALK_R:
-      drawDog(x + tip[animPhase], y + hopBob[animPhase], (animPhase & 1) ? dog_walk_r2 : dog_walk_r1);
+      drawPet(x + tip[animPhase], y + hopBob[animPhase]);
       if (showingBonk) drawBonkStars(x, y);
       break;
 
     case WALK_L:
-      drawDog(x + tip[animPhase], y + hopBob[animPhase], (animPhase & 1) ? dog_walk_l2 : dog_walk_l1);
+      drawPet(x + tip[animPhase], y + hopBob[animPhase]);
       if (showingBonk) drawBonkStars(x, y);
       break;
 
@@ -1159,7 +1076,7 @@ void loop() {
       int breath = (careStyle == STYLE_CHONKY)
         ? ((animPhase <= 1) ? 0 : 2)
         : ((animPhase <= 1) ? 0 : 1);
-      drawDog(x + ((animPhase == 3) ? 1 : 0), y + breath, dog_sleep);
+      drawPet(x + ((animPhase == 3) ? 1 : 0), y + breath);
       display.setTextSize(1);
       display.setCursor(x + 34, y - 1 - (animPhase & 1));
       if (careStyle == STYLE_CHONKY) display.print(F("Zzz"));
@@ -1169,27 +1086,25 @@ void loop() {
     }
 
     case GROOM:
-      drawDog(x, y + softBob[animPhase], (animPhase & 1) ? dog_groom2 : dog_groom1);
+      drawPet(x, y + softBob[animPhase]);
       display.drawPixel(x + animPhase, y + 10, WHITE);
       display.drawPixel(x + 3 + animPhase, y + 8 + (animPhase & 1), WHITE);
       break;
 
     case STRETCH:
-      drawDog(x + ((animPhase & 1) ? 2 : -2), y + softBob[animPhase], (animPhase & 1) ? dog_stretch2 : dog_stretch1);
+      drawPet(x + ((animPhase & 1) ? 2 : -2), y + softBob[animPhase]);
       break;
 
     case HAPPY:
       if (careStyle == STYLE_PLAYFUL) {
-        // Rocket bounce
-        drawDog(x + tip[animPhase], y + bigBob[animPhase], (animPhase & 1) ? dog_happy2 : dog_happy1);
+        drawPet(x + tip[animPhase], y + bigBob[animPhase]);
         drawPant(x, y + bigBob[animPhase]);
         display.fillCircle(x - 6 + animPhase, y + 8 - animPhase, 2, WHITE);
       } else if (careStyle == STYLE_CHONKY) {
-        // Happy loaf wobble
-        drawDog(x + tip[animPhase] * 2, y + softBob[animPhase], (animPhase & 1) ? dog_happy2 : dog_sit1);
+        drawPet(x + tip[animPhase] * 2, y + softBob[animPhase]);
         drawHeart(x + 34, y - 2);
       } else {
-        drawDog(x + tip[animPhase], y + bigBob[animPhase], (animPhase & 1) ? dog_happy2 : dog_happy1);
+        drawPet(x + tip[animPhase], y + bigBob[animPhase]);
         drawPant(x, y + bigBob[animPhase]);
         drawHeart(x + 34, y - 3 - animPhase);
         drawHeart(x - 6, y - 6 + (animPhase & 1));
@@ -1198,26 +1113,24 @@ void loop() {
 
     case PLAYING: {
       if (careStyle == STYLE_PLAYFUL) {
-        // Chase the ball hard
         int by = y + bigBob[animPhase];
-        drawDog(x + tip[animPhase], by, (animPhase & 1) ? dog_walk_l1 : dog_play);
+        drawPet(x + tip[animPhase], by);
         int bx = x - 8 - animPhase * 2;
         int bally = y + 12 - ((animPhase & 1) ? 5 : 0);
         display.fillCircle(bx, bally, 2, WHITE);
         drawPant(x, by);
       } else if (careStyle == STYLE_CHONKY) {
-        // Slow grateful squish under hand
         const int8_t handDrop[4] = {1, 3, 4, 2};
         const int8_t dogSquish[4] = {1, 2, 3, 2};
         int by = y + dogSquish[animPhase];
-        drawDog(x, by, dog_sit1);
+        drawPet(x, by);
         drawPettingHand(x + 5, y - 6 + handDrop[animPhase]);
         drawHeart(x + 34, y - 2);
       } else {
         const int8_t handDrop[4] = {0, 3, 4, 2};
         const int8_t dogSquish[4] = {0, 1, 2, 1};
         int by = y + dogSquish[animPhase];
-        drawDog(x, by, (animPhase & 1) ? dog_happy2 : dog_happy1);
+        drawPet(x, by);
         drawPettingHand(x + 5, y - 8 + handDrop[animPhase]);
         if (animPhase == 1 || animPhase == 2) {
           drawPant(x, by);
@@ -1229,7 +1142,7 @@ void loop() {
 
     case EATING: {
       int nod = (careStyle == STYLE_CHONKY) ? ((animPhase & 1) ? 3 : 0) : ((animPhase & 1) ? 2 : 0);
-      drawDog(x + tip[animPhase], y + nod, (animPhase & 1) ? dog_eat : dog_sit1);
+      drawPet(x + tip[animPhase], y + nod);
       drawBowl(x - 12, y + 14, true);
       display.drawPixel(x - 9, y + 10 - nod, WHITE);
       display.drawPixel(x - 5, y + 7 + nod, WHITE);
@@ -1245,7 +1158,7 @@ void loop() {
       int shake = (careStyle == STYLE_PLAYFUL)
         ? ((animPhase == 0) ? -4 : ((animPhase == 2) ? 4 : 0))
         : ((animPhase == 0) ? -2 : ((animPhase == 2) ? 2 : 0));
-      drawDog(x + shake, y + softBob[animPhase], (animPhase & 1) ? dog_reject2 : dog_reject1);
+      drawPet(x + shake, y + softBob[animPhase]);
       display.setTextSize(1);
       display.setCursor(x + 30, y - 7);
       if (careStyle == STYLE_CHONKY) display.print(F("urp"));
@@ -1255,7 +1168,7 @@ void loop() {
     }
 
     case HUNGRY:
-      drawDog(x + tip[animPhase], y + softBob[animPhase], dog_beg);
+      drawPet(x + tip[animPhase], y + softBob[animPhase]);
       drawBowl(x - 12, y + 14, false);
       if (careStyle != STYLE_CHONKY) drawPant(x, y + softBob[animPhase]);
       display.setTextSize(1);
@@ -1264,7 +1177,7 @@ void loop() {
       break;
 
     case BORED:
-      drawDog(x + tip[animPhase], y + ((animPhase == 2) ? 1 : 0), dog_bored);
+      drawPet(x + tip[animPhase], y + ((animPhase == 2) ? 1 : 0));
       display.setTextSize(1);
       display.setCursor(x + 34, y - (animPhase & 1));
       if (careStyle == STYLE_PLAYFUL) display.print(F("run?"));
@@ -1272,7 +1185,7 @@ void loop() {
       break;
 
     case MISERABLE:
-      drawDog(x + ((animPhase & 1) ? 2 : -2), y + hopBob[animPhase], dog_shock);
+      drawPet(x + ((animPhase & 1) ? 2 : -2), y + hopBob[animPhase]);
       drawBonkStars(x, y);
       display.setTextSize(1);
       display.setCursor(x + 8, y - 10);
