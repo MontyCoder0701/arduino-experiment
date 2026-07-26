@@ -800,31 +800,15 @@ void drawPet(int x, int y) {
   }
 }
 
-void drawPant(int x, int y) {
-  display.drawLine(x + 7, y + 11, x + 7, y + 14, WHITE);
-  display.drawPixel(x + 8, y + 14, WHITE);
-  display.drawPixel(x + 6, y + 14, WHITE);
-}
-
 void drawPettingHand(int x, int y) {
-  // Wrist coming down from above
   display.drawLine(x + 4, y - 5, x + 4, y, WHITE);
   display.drawLine(x + 5, y - 5, x + 5, y, WHITE);
-
-  // Palm and four little fingers
   display.fillRect(x + 2, y, 7, 4, WHITE);
-  display.drawPixel(x, y + 2, WHITE);
-  display.drawPixel(x + 1, y + 3, WHITE);
-  display.drawPixel(x + 9, y + 1, WHITE);
-  display.drawPixel(x + 10, y + 2, WHITE);
 }
 
 void drawBonkStars(int x, int y) {
-  display.setTextSize(1);
-  display.setCursor(x + 10, y - 8);
-  display.print(animPhase & 1 ? "*" : "+");
-  display.setCursor(x + 20, y - 6);
-  display.print(animPhase & 1 ? "+" : "*");
+  display.drawPixel(x + 12, y - 6, WHITE);
+  display.drawPixel(x + 20, y - 4, WHITE);
 }
 
 void loop() {
@@ -870,8 +854,6 @@ void loop() {
   bool phaseAdvanced = false;
   unsigned long frameMs = FRAME_MS;
   if (pose == SLEEP) frameMs = FRAME_MS * 3;
-  else if (careStyle == STYLE_PLAYFUL) frameMs = FRAME_MS - 30;
-  else if (careStyle == STYLE_CHONKY) frameMs = FRAME_MS + 40;
   if (currentMillis - lastFrameUpdate > frameMs) {
     animPhase = (animPhase + 1) & 3;
     animFrame = (animPhase & 1);
@@ -931,11 +913,10 @@ void loop() {
     }
   }
 
-  // 6. Position Physics — form-specific movement
+  // 6. Position Physics
   if (phaseAdvanced) {
-    int step = (careStyle == STYLE_PLAYFUL) ? 2 : ((careStyle == STYLE_CHONKY) ? ((animPhase & 1) ? 1 : 0) : 1);
     if (pose == WALK_R) {
-      dogX += step + ((careStyle == STYLE_PLAYFUL && animPhase == 2) ? 1 : 0);
+      dogX += 1;
       if (dogX > 96) {
         dogX = 96;
         idlePose = WALK_L;
@@ -944,7 +925,7 @@ void loop() {
       }
       markDirty();
     } else if (pose == WALK_L) {
-      dogX -= step + ((careStyle == STYLE_PLAYFUL && animPhase == 1) ? 1 : 0);
+      dogX -= 1;
       if (dogX < 0) {
         dogX = 0;
         idlePose = WALK_R;
@@ -953,9 +934,8 @@ void loop() {
       }
       markDirty();
     } else if (pose == HAPPY && animPhase == 0) {
-      int scoot = (careStyle == STYLE_PLAYFUL) ? 2 : 1;
-      dogX = constrain(dogX + (goofThought & 1 ? scoot : -scoot), 0, 96);
-    } else if (pose == SIT && animPhase == 0 && careStyle != STYLE_CHONKY && random(5) == 0) {
+      dogX = constrain(dogX + (goofThought & 1 ? 1 : -1), 0, 96);
+    } else if (pose == SIT && animPhase == 0 && random(5) == 0) {
       dogX = constrain(dogX + (random(2) ? 1 : -1), 0, 96);
     }
   }
@@ -981,9 +961,9 @@ void loop() {
     drawCareGauge(25);
     display.setTextSize(1);
     display.setCursor(0, 34);
-    if (careStyle == STYLE_PLAYFUL) display.print(F("MOVER"));
-    else if (careStyle == STYLE_CHONKY) display.print(F("SIPPER"));
-    else display.print(F("BALANCED"));
+    if (careStyle == STYLE_PLAYFUL) display.print(F("M"));
+    else if (careStyle == STYLE_CHONKY) display.print(F("S"));
+    else display.print(F("B"));
   }
 
   // Level-up gets its own banner; otherwise show the mood caption
@@ -1006,27 +986,11 @@ void loop() {
   // Draw Floor Ground Line
   display.drawLine(0, 60, 128, 60, WHITE);
 
-  // Evolution-form motion profiles
-  int8_t softBob[4];
-  int8_t hopBob[4];
-  int8_t bigBob[4];
-  int8_t tip[4];
-  if (careStyle == STYLE_PLAYFUL) {
-    softBob[0]=0; softBob[1]=-3; softBob[2]=1; softBob[3]=-2;
-    hopBob[0]=0; hopBob[1]=-5; hopBob[2]=0; hopBob[3]=-6;
-    bigBob[0]=0; bigBob[1]=-7; bigBob[2]=-1; bigBob[3]=-8;
-    tip[0]=0; tip[1]=2; tip[2]=0; tip[3]=-2;
-  } else if (careStyle == STYLE_CHONKY) {
-    softBob[0]=0; softBob[1]=0; softBob[2]=1; softBob[3]=0;
-    hopBob[0]=0; hopBob[1]=-1; hopBob[2]=1; hopBob[3]=-1;
-    bigBob[0]=0; bigBob[1]=-2; bigBob[2]=1; bigBob[3]=-1;
-    tip[0]=0; tip[1]=2; tip[2]=0; tip[3]=-2; // waddle
-  } else {
-    softBob[0]=0; softBob[1]=-2; softBob[2]=1; softBob[3]=-1;
-    hopBob[0]=0; hopBob[1]=-3; hopBob[2]=1; hopBob[3]=-4;
-    bigBob[0]=1; bigBob[1]=-5; bigBob[2]=0; bigBob[3]=-6;
-    tip[0]=0; tip[1]=1; tip[2]=0; tip[3]=-1;
-  }
+  // Motion bob
+  const int8_t softBob[4] = {0, -2, 1, -1};
+  const int8_t hopBob[4] = {0, -3, 1, -4};
+  const int8_t bigBob[4] = {0, -5, 0, -6};
+  const int8_t tip[4] = {0, 1, 0, -1};
 
   const int y = dogY;
   int x = dogX;
@@ -1038,8 +1002,6 @@ void loop() {
   switch (pose) {
     case SIT:
       drawPet(x + tip[animPhase], y + softBob[animPhase]);
-      if (careStyle == STYLE_PLAYFUL && (animPhase & 1)) drawPant(x, y + softBob[animPhase]);
-      else if (careStyle != STYLE_PLAYFUL && animPhase == 2) drawPant(x, y + softBob[animPhase]);
       break;
 
     case WALK_R:
@@ -1053,22 +1015,13 @@ void loop() {
       break;
 
     case SLEEP: {
-      int breath = (careStyle == STYLE_CHONKY)
-        ? ((animPhase <= 1) ? 0 : 2)
-        : ((animPhase <= 1) ? 0 : 1);
+      int breath = (animPhase <= 1) ? 0 : 1;
       drawPet(x + ((animPhase == 3) ? 1 : 0), y + breath);
-      display.setTextSize(1);
-      display.setCursor(x + 34, y - 1 - (animPhase & 1));
-      if (careStyle == STYLE_CHONKY) display.print(F("Zzz"));
-      else if (careStyle == STYLE_PLAYFUL) display.print(F("z!"));
-      else display.print(F("zZ"));
       break;
     }
 
     case GROOM:
       drawPet(x, y + softBob[animPhase]);
-      display.drawPixel(x + animPhase, y + 10, WHITE);
-      display.drawPixel(x + 3 + animPhase, y + 8 + (animPhase & 1), WHITE);
       break;
 
     case STRETCH:
@@ -1076,100 +1029,44 @@ void loop() {
       break;
 
     case HAPPY:
-      if (careStyle == STYLE_PLAYFUL) {
-        drawPet(x + tip[animPhase], y + bigBob[animPhase]);
-        drawPant(x, y + bigBob[animPhase]);
-        display.fillCircle(x - 6 + animPhase, y + 8 - animPhase, 2, WHITE);
-      } else if (careStyle == STYLE_CHONKY) {
-        drawPet(x + tip[animPhase] * 2, y + softBob[animPhase]);
-        drawHeart(x + 34, y - 2);
-      } else {
-        drawPet(x + tip[animPhase], y + bigBob[animPhase]);
-        drawPant(x, y + bigBob[animPhase]);
-        drawHeart(x + 34, y - 3 - animPhase);
-        drawHeart(x - 6, y - 6 + (animPhase & 1));
-      }
+      drawPet(x + tip[animPhase], y + bigBob[animPhase]);
+      if (animPhase & 1) drawHeart(x + 34, y - 3);
       break;
 
     case PLAYING: {
-      if (careStyle == STYLE_PLAYFUL) {
-        int by = y + bigBob[animPhase];
-        drawPet(x + tip[animPhase], by);
-        int bx = x - 8 - animPhase * 2;
-        int bally = y + 12 - ((animPhase & 1) ? 5 : 0);
-        display.fillCircle(bx, bally, 2, WHITE);
-        drawPant(x, by);
-      } else if (careStyle == STYLE_CHONKY) {
-        const int8_t handDrop[4] = {1, 3, 4, 2};
-        const int8_t dogSquish[4] = {1, 2, 3, 2};
-        int by = y + dogSquish[animPhase];
-        drawPet(x, by);
-        drawPettingHand(x + 5, y - 6 + handDrop[animPhase]);
-        drawHeart(x + 34, y - 2);
-      } else {
-        const int8_t handDrop[4] = {0, 3, 4, 2};
-        const int8_t dogSquish[4] = {0, 1, 2, 1};
-        int by = y + dogSquish[animPhase];
-        drawPet(x, by);
-        drawPettingHand(x + 5, y - 8 + handDrop[animPhase]);
-        if (animPhase == 1 || animPhase == 2) {
-          drawPant(x, by);
-          drawHeart(x + 34, y - 5);
-        }
-      }
+      const int8_t handDrop[4] = {0, 3, 4, 2};
+      int by = y + ((animPhase <= 1) ? animPhase : 2);
+      drawPet(x, by);
+      drawPettingHand(x + 5, y - 7 + handDrop[animPhase]);
+      if (animPhase & 1) drawHeart(x + 34, y - 4);
       break;
     }
 
     case EATING: {
-      int nod = (careStyle == STYLE_CHONKY) ? ((animPhase & 1) ? 3 : 0) : ((animPhase & 1) ? 2 : 0);
+      int nod = (animPhase & 1) ? 2 : 0;
       drawPet(x + tip[animPhase], y + nod);
       drawBowl(x - 12, y + 14, true);
-      display.drawPixel(x - 9, y + 10 - nod, WHITE);
-      display.drawPixel(x - 5, y + 7 + nod, WHITE);
-      if (careStyle == STYLE_CHONKY) {
-        display.drawPixel(x + 2, y + 8, WHITE);
-        display.drawPixel(x + 30, y + 12, WHITE);
-        display.drawPixel(x + 26, y + 9, WHITE);
-      }
       break;
     }
 
     case REJECT: {
-      int shake = (careStyle == STYLE_PLAYFUL)
-        ? ((animPhase == 0) ? -4 : ((animPhase == 2) ? 4 : 0))
-        : ((animPhase == 0) ? -2 : ((animPhase == 2) ? 2 : 0));
+      int shake = (animPhase == 0) ? -3 : ((animPhase == 2) ? 3 : 0);
       drawPet(x + shake, y + softBob[animPhase]);
-      display.setTextSize(1);
-      display.setCursor(x + 30, y - 7);
-      if (careStyle == STYLE_CHONKY) display.print(F("urp"));
-      else if (careStyle == STYLE_PLAYFUL) display.print(F("GO!"));
-      else display.print(F("NO"));
       break;
     }
 
     case HUNGRY:
       drawPet(x + tip[animPhase], y + softBob[animPhase]);
       drawBowl(x - 12, y + 14, false);
-      if (careStyle != STYLE_CHONKY) drawPant(x, y + softBob[animPhase]);
-      display.setTextSize(1);
-      display.setCursor(x + 10, y - 9 - (animPhase & 1));
-      display.print(careStyle == STYLE_CHONKY ? F("sip?") : F("!"));
       break;
 
     case BORED:
       drawPet(x + tip[animPhase], y + ((animPhase == 2) ? 1 : 0));
-      display.setTextSize(1);
-      display.setCursor(x + 34, y - (animPhase & 1));
-      if (careStyle == STYLE_PLAYFUL) display.print(F("go!"));
-      else display.print(F("..."));
       break;
 
     case MISERABLE:
       drawPet(x + ((animPhase & 1) ? 2 : -2), y + hopBob[animPhase]);
       drawBonkStars(x, y);
-      display.setTextSize(1);
-      display.setCursor(x + 8, y - 10);
-      display.print("ow");
       break;
   }
 
