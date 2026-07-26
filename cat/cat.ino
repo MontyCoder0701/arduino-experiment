@@ -135,19 +135,11 @@ uint8_t totalPets = 0;
 uint8_t totalFeeds = 0;
 uint8_t careStyle = STYLE_BALANCED;
 
-const char NAME_0[] PROGMEM = "Bonk";
-const char NAME_1[] PROGMEM = "Doof";
-const char NAME_2[] PROGMEM = "Goof";
-const char NAME_3[] PROGMEM = "Blob";
-const char NAME_4[] PROGMEM = "Chonk";
-const char NAME_5[] PROGMEM = "Boop";
-const char NAME_6[] PROGMEM = "Derp";
-const char NAME_7[] PROGMEM = "Potato";
-const char NAME_8[] PROGMEM = "Bean";
-const char NAME_9[] PROGMEM = "Dummy";
+const char NAME_0[] PROGMEM = "Tomato";
+const char NAME_1[] PROGMEM = "Potato";
+const char NAME_2[] PROGMEM = "Bean";
 const char *const DOG_NAMES[] PROGMEM = {
-  NAME_0, NAME_1, NAME_2, NAME_3, NAME_4,
-  NAME_5, NAME_6, NAME_7, NAME_8, NAME_9
+  NAME_0, NAME_1, NAME_2
 };
 const uint8_t DOG_NAME_COUNT = 10;
 uint8_t nameIndex = 0;
