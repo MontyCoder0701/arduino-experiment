@@ -641,9 +641,9 @@ const char *statusText() {
       return flashStatus(PSTR("nom nom"));
     case REJECT:
       if (rejectWasFood) {
-        return flashStatus(careStyle == STYLE_CHONKY ? PSTR("too round already") : PSTR("no. full. rock."));
+        return flashStatus(careStyle == STYLE_CHONKY ? PSTR("too round already") : PSTR("no. full."));
       }
-      return flashStatus(careStyle == STYLE_PLAYFUL ? PSTR("already zoomed") : PSTR("too silly already"));
+      return flashStatus(careStyle == STYLE_PLAYFUL ? PSTR("already zoomed") : PSTR("too excited!"));
     case MISERABLE: return flashStatus(PSTR("i am a pancake"));
     case HUNGRY:
       return flashStatus(careStyle == STYLE_CHONKY ? PSTR("FEED. NOW.") : PSTR("feed me"));
