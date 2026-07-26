@@ -153,9 +153,9 @@ const char C_1[] PROGMEM = "breathe..";
 const char C_2[] PROGMEM = "tiny win!";
 const char C_3[] PROGMEM = "still here";
 const char C_4[] PROGMEM = "body check?";
-const char C_5[] PROGMEM = "unclench";
-const char C_6[] PROGMEM = "blink!";
-const char C_7[] PROGMEM = "be kind";
+const char C_5[] PROGMEM = "no rush";
+const char C_6[] PROGMEM = "it's alright";
+const char C_7[] PROGMEM = "be kind to yourself";
 const char *const CHATTER[] PROGMEM = {
   C_0, C_1, C_2, C_3, C_4, C_5, C_6, C_7
 };
