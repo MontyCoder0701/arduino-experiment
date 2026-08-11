@@ -1,12 +1,12 @@
 // ADHDBuddy.ino
 //
 // ADHD companion pet: two reminders that drain over ~20 minutes.
-//   MOVE (fun)  -> stretch / walk break
-//   H2O  (food) -> drink water
+//   BODY (fun)  -> body check / stretch break
+//   UNMASK (food) -> take the mask off / soft reset
 // Wiring: one push button between D2 and GND (uses the internal pull-up).
-//   single press  -> logged a movement break
-//   double press  -> logged a water sip
-//   triple press  -> show MOVE / H2O / care gauges
+//   single press  -> logged a body check
+//   double press  -> logged an unmask
+//   triple press  -> show BODY / UNMASK / care gauges
 //   hold 5 seconds -> turn OFF (hold 5s again to turn back ON)
 //   hold 10 seconds -> wipe memory and start fresh
 #include <Wire.h>
@@ -21,26 +21,67 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 const uint8_t BUTTON_PIN = 2;
 
 // ==========================================
-//   THEMED PETS (drawn procedurally — flash-friendly)
-//   Sport  = fox athlete
-//   Chonk  = round loaf blob
-//   Balanced = classic dog
+//   ANNOYING-DOG STYLE (1-bit bitmaps)
 // ==========================================
-const uint8_t SPRITE_W = 32;
-const uint8_t SPRITE_H = 20;
+// Packed 32px wide (4 bytes/row); logical draw width is SPRITE_W.
+const uint8_t SPRITE_W = 28;
+const uint8_t SPRITE_H = 18;
+const uint8_t SLEEP_W = 32;
+const uint8_t SLEEP_H = 14;
+
+const unsigned char PROGMEM dog_sit[] = {
+  0x00,0x00,0x00,0x00,0x0d,0xec,0x00,0x00,0x1f,0xff,0xe0,0x00,
+  0x3b,0xbf,0xe0,0x00,0x3f,0xff,0xe0,0x00,0x3d,0xff,0xfe,0x00,
+  0x38,0xff,0xfe,0x00,0x30,0x1f,0xfe,0x00,0x3f,0xff,0xfc,0x00,
+  0x3f,0xff,0xfc,0x00,0x3f,0xff,0xf8,0x00,0x3f,0xff,0xf8,0x00,
+  0x3f,0xff,0xf8,0x00,0x0c,0xc3,0x30,0x00,0x0c,0x82,0x30,0x00,
+  0x08,0x00,0x20,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
+};
+// Trot frames: opposite diagonal legs extend each step.
+const unsigned char PROGMEM dog_walk1[] = {
+  0x00,0x00,0x00,0x00,0x0d,0xec,0x00,0x00,0x1f,0xff,0xe0,0x00,
+  0x3b,0xbf,0xe0,0x00,0x3f,0xff,0xe0,0x00,0x3d,0xff,0xfe,0x00,
+  0x38,0xff,0xfe,0x00,0x30,0x1f,0xfe,0x00,0x3f,0xff,0xfc,0x00,
+  0x3f,0xff,0xfc,0x00,0x3f,0xff,0xf8,0x00,0x3f,0xff,0xf8,0x00,
+  0x3f,0xff,0xf8,0x00,0x1c,0x63,0x8c,0x00,0x0c,0x61,0x8c,0x00,
+  0x0c,0x01,0x80,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
+};
+const unsigned char PROGMEM dog_walk2[] = {
+  0x00,0x00,0x00,0x00,0x0d,0xec,0x00,0x00,0x1f,0xff,0xe0,0x00,
+  0x3b,0xbf,0xe0,0x00,0x3f,0xff,0xe0,0x00,0x3d,0xff,0xfe,0x00,
+  0x38,0xff,0xfe,0x00,0x30,0x1f,0xfe,0x00,0x3f,0xff,0xfc,0x00,
+  0x3f,0xff,0xfc,0x00,0x3f,0xff,0xf8,0x00,0x3f,0xff,0xf8,0x00,
+  0x3f,0xff,0xf8,0x00,0x0c,0x71,0x8e,0x00,0x0c,0x61,0x8c,0x00,
+  0x00,0x60,0x0c,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
+};
+// Lying loaf sleep pose.
+const unsigned char PROGMEM dog_sleep[] = {
+  0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x01,0xff,0xff,0x80,
+  0x03,0xff,0xff,0xc0,0x07,0x77,0xff,0xe0,0x07,0xbf,0xff,0xe0,
+  0x07,0x1f,0xff,0xf0,0x07,0xff,0xff,0xf0,0x07,0xff,0xff,0xe0,
+  0x03,0xff,0xff,0x40,0x01,0xff,0xfe,0x00,0x00,0x00,0x00,0x00,
+  0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
+};
 
 enum Pose {
   WALK_R, WALK_L, SIT, SLEEP, GROOM, STRETCH, HAPPY,
-  PLAYING, EATING, BORED, HUNGRY, MISERABLE, REJECT
+  PLAYING, EATING, BORED, HUNGRY, MISERABLE, REJECT,
+  ZOOMIES, SPIN, TIPOVER, SNIFF, DANCE
 };
 Pose pose = SIT;
 Pose idlePose = SIT;
 
-const Pose IDLE_CHOICES[] = { WALK_R, WALK_L, SIT, GROOM, STRETCH, HAPPY };
+// Weighted toward silly bits so idle feels goofy, not just pacing.
+const Pose IDLE_CHOICES[] = {
+  WALK_R, WALK_L, SIT,
+  GROOM, STRETCH, HAPPY,
+  ZOOMIES, ZOOMIES, SPIN, SPIN,
+  TIPOVER, SNIFF, DANCE, DANCE, HAPPY
+};
 const uint8_t IDLE_CHOICE_COUNT = sizeof(IDLE_CHOICES) / sizeof(IDLE_CHOICES[0]);
 
-int dogX = 48;
-const int dogY = 40; // locks pet to the bottom grassline
+int dogX = 50;
+const int dogY = 40; // 28x18 annoying-dog style above the ground line
 unsigned long lastIdleChange = 0;
 unsigned long lastFrameUpdate = 0;
 unsigned long lastFunDrain = 0;
@@ -56,18 +97,18 @@ unsigned long bonkUntil = 0;
 uint8_t goofThought = 0;
 
 // --- NEEDS ENGINE (ADHD reminders) ---
-// fun  = movement / break energy
-// food = hydration
+// fun  = body-check energy
+// food = unmask / soft-reset energy
 int fun = 70;
 int food = 70;
 const int LOW_LEVEL = 25;                 // start nagging
 const int CRITICAL_LEVEL = 12;            // loud nag
 const int FULL_LEVEL = 90;                // already topped up
 // ~20 min from topped (~100) down to LOW (25) ≈ 75 points
-const unsigned long FUN_DRAIN_MS = (20UL * 60UL * 1000UL) / 75UL;   // move reminder
-const unsigned long FOOD_DRAIN_MS = (20UL * 60UL * 1000UL) / 75UL;  // water reminder
-const unsigned long ACTION_MS = 2200;      // celebration after logging move/sip
-const unsigned long IDLE_CHANGE_MS = 2400;
+const unsigned long FUN_DRAIN_MS = (20UL * 60UL * 1000UL) / 75UL;   // body-check reminder
+const unsigned long FOOD_DRAIN_MS = (20UL * 60UL * 1000UL) / 75UL;  // unmask reminder
+const unsigned long ACTION_MS = 2200;      // celebration after logging check/unmask
+const unsigned long IDLE_CHANGE_MS = 1800;
 const unsigned long NAP_AFTER_MS = 50000;
 const unsigned long FRAME_MS = 130;
 const unsigned long DAY_MS = 86400000UL;
@@ -79,7 +120,7 @@ unsigned long lastBatteryAt = 0;
 uint8_t batteryPct = 100;
 
 // --- BUTTON ENGINE ---
-// single tap = move break, double tap = drink water, triple tap = gauges
+// single tap = body check, double tap = unmask, triple tap = gauges
 // hold 5s = power toggle (off / on)
 // hold 10s = full reset
 const unsigned long DEBOUNCE_MS = 40;
@@ -149,37 +190,37 @@ char nameBuf[12];
 
 // Random awake chatter (flash-light set).
 const char C_0[] PROGMEM = "u got this";
-const char C_1[] PROGMEM = "breathe..";
-const char C_2[] PROGMEM = "tiny win!";
-const char C_3[] PROGMEM = "still here";
-const char C_4[] PROGMEM = "body check?";
+const char C_1[] PROGMEM = "unmask...";
+const char C_2[] PROGMEM = "body check?";
+const char C_3[] PROGMEM = "slow down";
+const char C_4[] PROGMEM = "sensory time?";
 const char C_5[] PROGMEM = "no rush";
-const char C_6[] PROGMEM = "it's alright";
-const char C_7[] PROGMEM = "be kind to yourself";
+const char C_6[] PROGMEM = "it's ok";
+const char C_7[] PROGMEM = "zone out...";
 const char *const CHATTER[] PROGMEM = {
   C_0, C_1, C_2, C_3, C_4, C_5, C_6, C_7
 };
 const uint8_t CHATTER_COUNT = 8;
 
-const char M_0[] PROGMEM = "stretch!";
-const char M_1[] PROGMEM = "walk bit?";
-const char M_2[] PROGMEM = "MOVE!";
+const char M_0[] PROGMEM = "body check?";
+const char M_1[] PROGMEM = "stretch!";
+const char M_2[] PROGMEM = "check in!";
 const char *const MOVE_NAGS[] PROGMEM = { M_0, M_1, M_2 };
 const uint8_t MOVE_NAG_COUNT = 3;
 
-const char W_0[] PROGMEM = "water!";
-const char W_1[] PROGMEM = "sip!";
-const char W_2[] PROGMEM = "H2O!";
+const char W_0[] PROGMEM = "unmask?";
+const char W_1[] PROGMEM = "take off..";
+const char W_2[] PROGMEM = "soft face?";
 const char *const H2O_NAGS[] PROGMEM = { W_0, W_1, W_2 };
 const uint8_t H2O_NAG_COUNT = 3;
 
-const char P_0[] PROGMEM = "nice move!";
-const char P_1[] PROGMEM = "logged!";
+const char P_0[] PROGMEM = "checked!";
+const char P_1[] PROGMEM = "body ok!";
 const char *const MOVE_YAY[] PROGMEM = { P_0, P_1 };
 const uint8_t MOVE_YAY_COUNT = 2;
 
-const char S_0[] PROGMEM = "sip sip!";
-const char S_1[] PROGMEM = "hydrated!";
+const char S_0[] PROGMEM = "unmasked!";
+const char S_1[] PROGMEM = "soft now!";
 const char *const H2O_YAY[] PROGMEM = { S_0, S_1 };
 const uint8_t H2O_YAY_COUNT = 2;
 
@@ -203,7 +244,7 @@ void saveState() {
   EEPROM.update(EEPROM_ADDR_MAGIC, EEPROM_MAGIC);
   EEPROM.update(EEPROM_ADDR_FUN, (uint8_t)clampLevel(fun));
   EEPROM.update(EEPROM_ADDR_FOOD, (uint8_t)clampLevel(food));
-  EEPROM.update(EEPROM_ADDR_CATX, (uint8_t)constrain(dogX, 0, 96));
+  EEPROM.update(EEPROM_ADDR_CATX, (uint8_t)constrain(dogX, 0, 100));
   EEPROM.update(EEPROM_ADDR_NAME, nameIndex);
   EEPROM.update(EEPROM_ADDR_AGE_LOW, lowByte(ageDays));
   EEPROM.update(EEPROM_ADDR_AGE_HIGH, highByte(ageDays));
@@ -233,7 +274,7 @@ void loadState() {
   }
   fun = clampLevel(EEPROM.read(EEPROM_ADDR_FUN));
   food = clampLevel(EEPROM.read(EEPROM_ADDR_FOOD));
-  dogX = constrain(EEPROM.read(EEPROM_ADDR_CATX), 0, 96);
+  dogX = constrain(EEPROM.read(EEPROM_ADDR_CATX), 0, 100);
 
   nameIndex = EEPROM.read(EEPROM_ADDR_NAME);
   if (nameIndex >= DOG_NAME_COUNT) {
@@ -296,7 +337,7 @@ void updateBattery(unsigned long now) {
 void factoryReset(unsigned long now) {
   fun = 70;
   food = 70;
-  dogX = 48;
+  dogX = 50;
   pose = SIT;
   idlePose = SIT;
   actionUntil = 0;
@@ -402,10 +443,12 @@ void tryLevelUp(unsigned long now) {
   petsSinceLevel = 0;
   feedsSinceLevel = 0;
   showingLevelUp = true;
-  levelUpUntil = now + 2400;
+  levelUpUntil = now + 3000;
   markDirty();
   saveState();
-  startAction(HAPPY, now);
+  if (careStyle == STYLE_PLAYFUL) startAction(DANCE, now);
+  else if (careStyle == STYLE_CHONKY) startAction(HAPPY, now);
+  else startAction(SPIN, now);
 }
 
 void startAction(Pose p, unsigned long now) {
@@ -418,10 +461,10 @@ void startAction(Pose p, unsigned long now) {
 }
 
 void playWithDog(unsigned long now) {
-  // Single press: user took a movement / stretch break.
+  // Single press: user did a body check.
   noteInteraction(now);
   if (food <= CRITICAL_LEVEL) {
-    // Dehydrated — nudge water first
+    // Mask still on hard — nudge unmask first
     fun = clampLevel(fun + 3);
     markDirty();
     saveState();
@@ -433,7 +476,7 @@ void playWithDog(unsigned long now) {
     startAction(REJECT, now);
     return;
   }
-  fun = clampLevel(fun + 30);  // resets ~20 min move timer
+  fun = clampLevel(fun + 30);  // resets ~20 min body-check timer
   food = clampLevel(food - 1);
   if (petsSinceLevel < 255) petsSinceLevel++;
   if (totalPets < 255) totalPets++;
@@ -445,14 +488,14 @@ void playWithDog(unsigned long now) {
 }
 
 void feedDog(unsigned long now) {
-  // Double press: user drank water.
+  // Double press: user unmasked / soft reset.
   noteInteraction(now);
   if (food >= FULL_LEVEL) {
     rejectWasFood = true;
     startAction(REJECT, now);
     return;
   }
-  food = clampLevel(food + 30);  // resets ~20 min water timer
+  food = clampLevel(food + 30);  // resets ~20 min unmask timer
   fun = clampLevel(fun + 2);
   if (feedsSinceLevel < 255) feedsSinceLevel++;
   if (totalFeeds < 255) totalFeeds++;
@@ -531,9 +574,14 @@ void drawGauge(int y, const char *label, int value, bool blink) {
   display.setCursor(0, y);
   display.print(label);
 
+  int hx = (int)strlen(label) * 6 + 2;
+  int spacing = (SCREEN_WIDTH - hx) / 10;
+  if (spacing > 10) spacing = 10;
+  if (spacing < 7) spacing = 7;
+
   const int heartCount = (value + 9) / 10;
   for (int i = 0; i < 10; i++) {
-    drawHeart(29 + i * 10, y, !blink && i < heartCount);
+    drawHeart(hx + i * spacing, y, !blink && i < heartCount);
   }
 }
 
@@ -561,19 +609,63 @@ void drawCareGauge(int y) {
 
 // Evolution name for the level just reached, branched by care pattern.
 const char *levelUpTitle() {
-  if (careStyle == STYLE_PLAYFUL) return PSTR("MOVE UP!");
-  if (careStyle == STYLE_CHONKY) return PSTR("SIP UP!");
-  return PSTR("LEVEL UP!");
+  if (careStyle == STYLE_PLAYFUL) return PSTR("ATHLETE!");
+  if (careStyle == STYLE_CHONKY) return PSTR("SOFT MODE!");
+  return PSTR("TRUE FORM!");
+}
+
+void drawSpark(int x, int y) {
+  display.drawPixel(x, y, WHITE);
+  display.drawPixel(x - 1, y, WHITE);
+  display.drawPixel(x + 1, y, WHITE);
+  display.drawPixel(x, y - 1, WHITE);
+  display.drawPixel(x, y + 1, WHITE);
 }
 
 void drawLevelUpBanner() {
-  display.fillRect(2, 16, 124, 26, BLACK);
-  display.drawRect(2, 16, 124, 26, WHITE);
+  display.fillRect(2, 12, 124, 34, BLACK);
+  display.drawRect(2, 12, 124, 34, WHITE);
+
+  // Style-flavored frame accents.
+  if (careStyle == STYLE_PLAYFUL) {
+    // Lightning bolts in the corners.
+    display.drawLine(5, 15, 9, 22, WHITE);
+    display.drawLine(9, 22, 7, 22, WHITE);
+    display.drawLine(7, 22, 11, 30, WHITE);
+    display.drawLine(122, 15, 118, 22, WHITE);
+    display.drawLine(118, 22, 120, 22, WHITE);
+    display.drawLine(120, 22, 116, 30, WHITE);
+    if (animFrame) {
+      display.drawPixel(14, 18, WHITE);
+      display.drawPixel(113, 18, WHITE);
+    }
+  } else if (careStyle == STYLE_CHONKY) {
+    // Soft sparkles + little hearts.
+    drawSpark(8, 18);
+    drawSpark(119, 18);
+    if (animFrame) {
+      drawHeart(10, 36);
+      drawHeart(110, 36);
+    } else {
+      display.drawPixel(16, 40, WHITE);
+      display.drawPixel(111, 40, WHITE);
+    }
+  } else {
+    // Twin stars.
+    drawSpark(8, 20);
+    drawSpark(119, 20);
+    display.drawPixel(14, 38, WHITE);
+    display.drawPixel(113, 38, WHITE);
+    if (animFrame) {
+      display.drawPixel(20, 16, WHITE);
+      display.drawPixel(107, 16, WHITE);
+    }
+  }
 
   char line[16];
   snprintf(line, sizeof(line), "LEVEL %u!", dogLevel);
   printCentered(20, line);
-  printCentered(31, flashStatus(levelUpTitle()));
+  printCentered(32, flashStatus(levelUpTitle()));
 }
 
 void drawPetHeader() {
@@ -665,8 +757,8 @@ const char *statusText() {
     case EATING:
       return flashTableMsg(H2O_YAY, H2O_YAY_COUNT, actionMsgIdx);
     case REJECT:
-      if (rejectWasFood) return flashStatus(PSTR("just sipped"));
-      return flashStatus(PSTR("just moved"));
+      if (rejectWasFood) return flashStatus(PSTR("just unmasked"));
+      return flashStatus(PSTR("just checked"));
     case MISERABLE:
       return flashTableMsg(H2O_NAGS, H2O_NAG_COUNT, chatterIdx);
     case HUNGRY:
@@ -678,6 +770,11 @@ const char *statusText() {
     case HAPPY:
     case GROOM:
     case STRETCH:
+    case ZOOMIES:
+    case SPIN:
+    case TIPOVER:
+    case SNIFF:
+    case DANCE:
     case WALK_R:
     case WALK_L:
     case SIT:
@@ -686,118 +783,245 @@ const char *statusText() {
   }
 }
 
-void drawFace(int hx, int hy, bool faceRight) {
-  int e0 = faceRight ? hx + 2 : hx - 5;
-  int e1 = faceRight ? hx + 7 : hx;
-  int nose = faceRight ? hx + 10 : hx - 8;
+void drawBitmapHFlip(int x, int y, const unsigned char *bitmap, uint8_t w, uint8_t h) {
+  // Tiny horizontal flip so walk-right can reuse the left-facing sprite.
+  uint8_t bytesPerRow = (w + 7) / 8;
+  for (uint8_t row = 0; row < h; row++) {
+    for (uint8_t col = 0; col < w; col++) {
+      uint8_t b = pgm_read_byte(bitmap + row * bytesPerRow + (col >> 3));
+      if (b & (0x80 >> (col & 7))) {
+        display.drawPixel(x + (w - 1 - col), y + row, WHITE);
+      }
+    }
+  }
+}
+
+void drawAnnoyingDog(int x, int y, bool faceRight, bool walking) {
   if (pose == SLEEP) {
-    display.drawLine(e0, hy, e0 + 3, hy, BLACK);
-    display.drawLine(e1, hy, e1 + 3, hy, BLACK);
+    // Flat loaf sleep sprite (wider, shorter).
+    int sx = x - 2;
+    int sy = y + 4;
+    if (faceRight) drawBitmapHFlip(sx, sy, dog_sleep, SLEEP_W, SLEEP_H);
+    else display.drawBitmap(sx, sy, dog_sleep, SLEEP_W, SLEEP_H, WHITE);
+    // Soft Z breath mark
+    if (animPhase & 1) {
+      display.drawPixel(sx + SLEEP_W + 1, sy, WHITE);
+      display.drawPixel(sx + SLEEP_W + 2, sy - 1, WHITE);
+    }
+    return;
+  }
+
+  const unsigned char *bmp = dog_sit;
+  // Alternate diagonal leg pairs each tick for a trot.
+  if (walking) bmp = (animPhase & 1) ? dog_walk2 : dog_walk1;
+  if (faceRight) drawBitmapHFlip(x, y, bmp, SPRITE_W, SPRITE_H);
+  else display.drawBitmap(x, y, bmp, SPRITE_W, SPRITE_H, WHITE);
+
+  // Baked face already has neutral eyes + T-mouth. Only tweak for moods.
+  // Anchors match left-facing 1px eyes at cols 5 / 9.
+  int e0 = faceRight ? x + (SPRITE_W - 1 - 5) : x + 5;
+  int e1 = faceRight ? x + (SPRITE_W - 1 - 9) : x + 9;
+  int mx = faceRight ? x + (SPRITE_W - 8) : x + 5;
+  int my = y + 6;
+
+  switch (pose) {
+    case HAPPY:
+    case DANCE:
+      // Close eyes into ^ ^ over baked holes, keep T-mouth.
+      display.fillRect(e0, y + 3, 2, 2, WHITE);
+      display.fillRect(e1, y + 3, 2, 2, WHITE);
+      display.drawPixel(e0, y + 5, BLACK);
+      display.drawPixel(e0 + 1, y + 4, BLACK);
+      display.drawPixel(e1, y + 5, BLACK);
+      display.drawPixel(e1 + 1, y + 4, BLACK);
+      break;
+    case PLAYING:
+    case ZOOMIES:
+      display.fillRect(e0, y + 3, 2, 2, WHITE);
+      display.fillRect(e1, y + 3, 2, 2, WHITE);
+      display.drawPixel(e0, y + 3, BLACK);
+      display.drawPixel(e1, y + 3, BLACK);
+      display.drawPixel(e0, y + 4, BLACK);
+      display.drawPixel(e1, y + 4, BLACK);
+      break;
+    case BORED:
+    case TIPOVER:
+      display.fillRect(e0, y + 3, 2, 2, WHITE);
+      display.fillRect(e1, y + 3, 2, 2, WHITE);
+      display.drawPixel(e0, y + 4, BLACK);
+      display.drawPixel(e1, y + 5, BLACK);
+      break;
+    case HUNGRY:
+      display.fillRect(mx, my, 3, 1, WHITE);
+      display.fillRect(mx, my + 1, 3, 1, BLACK);
+      break;
+    case EATING:
+      display.fillRect(mx, my, 3, 1, WHITE);
+      if (animPhase & 1) display.fillRect(mx, my, 3, 1, BLACK);
+      else display.drawLine(mx, my, mx + 2, my, BLACK);
+      break;
+    case MISERABLE:
+      display.fillRect(e0, y + 3, 2, 2, WHITE);
+      display.fillRect(e1, y + 3, 2, 2, WHITE);
+      display.drawLine(e0, y + 3, e0 + 1, y + 4, BLACK);
+      display.drawLine(e0 + 1, y + 3, e0, y + 4, BLACK);
+      display.drawLine(e1, y + 3, e1 + 1, y + 4, BLACK);
+      display.drawLine(e1 + 1, y + 3, e1, y + 4, BLACK);
+      break;
+    case REJECT:
+      display.fillRect(e0, y + 3, 2, 2, WHITE);
+      display.fillRect(e1, y + 3, 2, 2, WHITE);
+      display.drawLine(e0, y + 3, e0 + 1, y + 4, BLACK);
+      display.drawLine(e1 + 1, y + 3, e1, y + 4, BLACK);
+      display.drawPixel(e0, y + 4, BLACK);
+      display.drawPixel(e1, y + 4, BLACK);
+      break;
+    case GROOM:
+    case SNIFF:
+      if (animPhase & 1) {
+        display.fillRect(e1, y + 3, 2, 2, WHITE);
+        display.drawPixel(e1, y + 4, BLACK);
+      }
+      break;
+    case SPIN:
+      // Dizzy dots instead of eyes.
+      display.fillRect(e0, y + 3, 2, 2, WHITE);
+      display.fillRect(e1, y + 3, 2, 2, WHITE);
+      display.drawPixel(e0 + (animPhase & 1), y + 4, BLACK);
+      display.drawPixel(e1 + ((animPhase + 1) & 1), y + 4, BLACK);
+      break;
+    default:
+      // Sit / walk / stretch: keep baked neutral face.
+      break;
+  }
+}
+
+void drawLevelGear(int x, int y, bool faceRight) {
+  if (dogLevel < 2 || pose == SLEEP) return;
+
+  if (careStyle == STYLE_PLAYFUL) {
+    // Body-check athlete path: sweatband -> kicks -> cape -> lightning.
+    // Sweatband
+    display.fillRect(x + 5, y + 2, 10, 2, WHITE);
+    if (dogLevel >= 3) {
+      // Sneakers
+      display.fillRect(x + 3, y + 15, 5, 2, WHITE);
+      display.fillRect(x + 16, y + 15, 5, 2, WHITE);
+      display.drawPixel(x + 7, y + 15, BLACK);
+      display.drawPixel(x + 20, y + 15, BLACK);
+      // Speed dashes when moving
+      if (pose == WALK_L || pose == WALK_R || pose == ZOOMIES || pose == DANCE) {
+        int dx = faceRight ? -6 : 30;
+        display.drawPixel(x + dx, y + 8 + (animPhase & 1), WHITE);
+        display.drawPixel(x + dx + (faceRight ? -2 : 2), y + 10, WHITE);
+        display.drawPixel(x + dx + (faceRight ? -3 : 3), y + 12, WHITE);
+      }
+    }
+    if (dogLevel >= 4) {
+      // Flutter cape
+      int cx = faceRight ? x - 2 : x + SPRITE_W - 2;
+      int flap = (animPhase & 1) ? 2 : 0;
+      display.fillTriangle(cx, y + 4, cx + (faceRight ? -5 : 5), y + 8 + flap,
+                           cx + (faceRight ? -2 : 2), y + 14, WHITE);
+    }
+    if (dogLevel >= 5) {
+      // Lightning crest + spark aura
+      int lx = x + 12;
+      display.drawLine(lx, y - 5, lx + 3, y - 1, WHITE);
+      display.drawLine(lx + 3, y - 1, lx + 1, y - 1, WHITE);
+      display.drawLine(lx + 1, y - 1, lx + 4, y + 3, WHITE);
+      if (animFrame) {
+        drawSpark(x + 1, y + 3);
+        drawSpark(x + SPRITE_W - 2, y + 5);
+      }
+    } else {
+      // Bouncing training ball (lv2-4 companion)
+      int bx = faceRight ? x + SPRITE_W + 1 : x - 4;
+      int by = y + 8 + ((animPhase == 1 || animPhase == 3) ? -2 : 0);
+      display.fillRect(bx, by, 3, 3, WHITE);
+      display.drawPixel(bx + 1, by + 1, BLACK);
+    }
+
+  } else if (careStyle == STYLE_CHONKY) {
+    // Unmask / soft path: scarf -> bloom -> beanie -> glow.
+    // Scarf / mask ribbon
+    display.fillRect(x + 6, y + 8, 12, 2, WHITE);
+    int tipX = faceRight ? x + SPRITE_W - 1 : x + 2;
+    display.drawLine(tipX, y + 10, tipX + (faceRight ? 3 : -3), y + 13 + (animPhase & 1), WHITE);
+    display.drawPixel(tipX + (faceRight ? 2 : -2), y + 12, WHITE);
+
+    if (dogLevel >= 3) {
+      // Soft belly puff
+      display.fillCircle(x + 12, y + 12, 3, WHITE);
+      // Tiny bloom by ear
+      int fx = faceRight ? x + 3 : x + SPRITE_W - 6;
+      display.drawPixel(fx + 1, y + 1, WHITE);
+      display.drawPixel(fx, y + 2, WHITE);
+      display.drawPixel(fx + 2, y + 2, WHITE);
+      display.drawPixel(fx + 1, y + 3, WHITE);
+    }
+    if (dogLevel >= 4) {
+      // Cozy beanie
+      display.fillRect(x + 6, y - 1, 12, 3, WHITE);
+      display.fillRect(x + 8, y - 3, 8, 2, WHITE);
+      display.fillRect(x + 16, y - 2, 3, 3, WHITE); // pom
+    }
+    if (dogLevel >= 5) {
+      // Soft glow rings + floaty sparkles
+      display.drawCircle(x + 12, y + 8, 14, WHITE);
+      if (animFrame) display.drawCircle(x + 12, y + 8, 11, WHITE);
+      drawSpark(x - 1, y + 2 + (animPhase & 1));
+      drawSpark(x + SPRITE_W + 1, y + 6 - (animPhase & 1));
+      if (animPhase == 0) drawHeart(x + 30, y);
+      if (animPhase == 2) drawHeart(x - 6, y + 2);
+    }
+
   } else {
-    display.fillRect(e0, hy - 1, 3, 3, BLACK);
-    display.fillRect(e1, hy - 1, 3, 3, BLACK);
-    display.drawPixel(e0 + 1, hy - 1, WHITE);
-    display.drawPixel(e1 + 1, hy - 1, WHITE);
-  }
-  display.fillRect(nose, hy + 2, 2, 2, BLACK);
-}
+    // Balanced path: tag -> wing -> crown -> orbit stars.
+    // Collar tag
+    display.fillRect(x + 9, y + 9, 6, 2, WHITE);
+    display.fillRect(x + 11, y + 11, 2, 2, WHITE);
+    display.drawPixel(x + 11, y + 11, BLACK);
 
-void drawLegs(int x, int y, uint8_t tall) {
-  bool walk = (pose == WALK_L || pose == WALK_R || pose == PLAYING);
-  int a = (walk && (animPhase & 1)) ? 2 : 0;
-  int b = (walk && !(animPhase & 1)) ? 2 : 0;
-  display.fillRect(x + 8, y + 14 + a, 3, tall, WHITE);
-  display.fillRect(x + 14, y + 14 + b, 3, tall, WHITE);
-  display.fillRect(x + 20, y + 14 + a, 3, tall, WHITE);
-  display.fillRect(x + 25, y + 14 + b, 3, tall, WHITE);
-}
-
-void drawGear(int x, int y, int hx) {
-  // Shared level gear — keeps flash small, still scales with level.
-  if (dogLevel >= 2) {
-    display.fillRect(x + 10, y + 11, 12, 2, BLACK);
-  }
-  if (dogLevel >= 3) {
-    display.fillRect(hx - 5, y + 1, 10, 2, WHITE);
-  }
-  if (dogLevel >= 4) {
-    display.fillRect(hx - 5, y - 3, 11, 3, WHITE);
-  }
-  if (dogLevel >= 5) {
-    display.fillRect(hx - 6, y - 6, 13, 3, WHITE);
-    display.fillRect(hx - 1, y - 8, 3, 2, WHITE);
-    if (animFrame) display.drawPixel(x + 16, y - 9, WHITE);
-  }
-}
-
-void drawSportFox(int x, int y) {
-  bool faceRight = (pose == WALK_R || pose == REJECT);
-  int hx = faceRight ? x + 22 : x + 10;
-  uint8_t earH = 2 + dogLevel;
-  display.fillTriangle(hx - 4, y + 4, hx - 1, y + 4, hx - 3, y + 4 - earH, WHITE);
-  display.fillTriangle(hx + 1, y + 4, hx + 4, y + 4, hx + 3, y + 3 - earH, WHITE);
-  display.fillCircle(hx, y + 7, 5, WHITE);
-  display.fillRect(x + 9, y + 8, 14, 6 + dogLevel / 2, WHITE);
-  drawLegs(x, y, 4 + (dogLevel >= 3));
-  int tx = faceRight ? x + 4 : x + 28;
-  display.fillTriangle(tx, y + 10, tx + (faceRight ? -4 - dogLevel : 4 + dogLevel), y + 6,
-                       tx, y + 14, WHITE);
-  drawFace(hx, y + 7, faceRight);
-  drawGear(x, y, hx);
-  if (dogLevel >= 2) {
-    int bx = x + (faceRight ? 30 : -2) + ((animPhase & 1) ? 1 : 0);
-    display.fillCircle(bx, y + 7, 2, WHITE);
-  }
-  if (dogLevel >= 3) display.fillRect(hx - 5, y + 5, 11, 2, BLACK); // shades
-}
-
-void drawChonkLoaf(int x, int y) {
-  bool faceRight = (pose == WALK_R || pose == REJECT);
-  int hx = faceRight ? x + 20 : x + 12;
-  display.fillCircle(x + 16, y + 13, 6 + dogLevel, WHITE);
-  display.fillCircle(hx, y + 7, 5, WHITE);
-  display.fillCircle(hx - 4, y + 2, 2, WHITE);
-  display.fillCircle(hx + 4, y + 2, 2, WHITE);
-  display.fillRect(x + 8, y + 17, 5, 2, WHITE);
-  display.fillRect(x + 19, y + 17, 5, 2, WHITE);
-  drawFace(hx, y + 7, faceRight);
-  display.fillRect(faceRight ? hx + 3 : hx - 5, y + 8, 3, 2, BLACK);
-  drawGear(x, y, hx);
-  if (dogLevel >= 3) {
-    display.fillTriangle(x + 8, y + 9, x + 24, y + 9, x + 16, y + 16, WHITE);
-  }
-  if (dogLevel >= 4) display.fillCircle(hx, y - 2, 4, WHITE);
-}
-
-void drawBalancedDog(int x, int y) {
-  bool faceRight = (pose == WALK_R || pose == REJECT);
-  int hx = faceRight ? x + 22 : x + 10;
-  display.fillRect(hx - 7, y + 3, 4, 6 + dogLevel / 2, WHITE);
-  display.fillRect(hx + 3, y + 3, 4, 6 + dogLevel / 2, WHITE);
-  display.fillCircle(hx, y + 7, 5 + (dogLevel >= 3), WHITE);
-  display.fillRect(x + 8, y + 9, 17, 7, WHITE);
-  drawLegs(x, y, 3 + (dogLevel >= 3));
-  int tw = (animPhase & 1) ? -2 : 2;
-  display.fillTriangle(x + 27, y + 11, x + 31, y + 8 + tw, x + 30, y + 14, WHITE);
-  drawFace(hx, y + 7, faceRight);
-  drawGear(x, y, hx);
-  if (dogLevel >= 3) {
-    display.fillTriangle(x + 27, y + 5, x + 34, y + 8, x + 28, y + 17, WHITE);
-  }
-  if (dogLevel >= 4) {
-    display.fillTriangle(hx - 4, y + 1, hx + 4, y + 1, hx, y - 6, WHITE);
+    if (dogLevel >= 3) {
+      // Little wing
+      int wx = faceRight ? x + SPRITE_W - 4 : x;
+      int flap = (animPhase & 1) ? 1 : 0;
+      display.fillTriangle(wx, y + 6, wx + (faceRight ? 7 : -7), y + 4 - flap,
+                           wx + (faceRight ? 5 : -5), y + 10, WHITE);
+    }
+    if (dogLevel >= 4) {
+      // Crown
+      display.fillRect(x + 7, y - 1, 10, 2, WHITE);
+      display.drawPixel(x + 8, y - 3, WHITE);
+      display.drawPixel(x + 11, y - 4, WHITE);
+      display.drawPixel(x + 14, y - 3, WHITE);
+      display.drawLine(x + 8, y - 2, x + 14, y - 2, WHITE);
+    }
+    if (dogLevel >= 5) {
+      // Halo + orbiting stars
+      display.drawCircle(x + 12, y - 2, 6, WHITE);
+      int ox = ((animPhase & 1) ? 10 : -8);
+      int oy = ((animPhase == 0 || animPhase == 2) ? -4 : 2);
+      drawSpark(x + 12 + ox, y + 6 + oy);
+      drawSpark(x + 12 - ox, y + 8 - oy);
+    } else if (dogLevel >= 2 && animFrame) {
+      drawSpark(x + SPRITE_W + 1, y + 2);
+    }
   }
 }
 
 void drawPet(int x, int y) {
-  int dy = 3 - (int)dogLevel;
-  if (careStyle == STYLE_PLAYFUL) {
-    drawSportFox(x, y + dy - 1);
-  } else if (careStyle == STYLE_CHONKY) {
-    drawChonkLoaf(x, y + dy + 1);
-  } else {
-    drawBalancedDog(x, y + dy);
-  }
+  bool faceRight = (pose == WALK_R || pose == REJECT ||
+                    (pose == ZOOMIES && (goofThought & 1)) ||
+                    (pose == SPIN && (animPhase & 1)) ||
+                    (pose == DANCE && (animPhase == 1 || animPhase == 2)));
+  bool walking = (pose == WALK_L || pose == WALK_R || pose == PLAYING ||
+                  pose == STRETCH || pose == ZOOMIES || pose == DANCE);
+  int dy = (dogLevel <= 1) ? 2 : 0;
+
+  drawAnnoyingDog(x, y + dy, faceRight, walking);
+  drawLevelGear(x, y + dy, faceRight);
 }
 
 void drawPettingHand(int x, int y) {
@@ -847,13 +1071,14 @@ void loop() {
     saveState();
   }
 
-  // 2. Button: 1 = move break, 2 = drink water, 3 = gauges
+  // 2. Button: 1 = body check, 2 = unmask, 3 = gauges
   readButton(currentMillis);
 
-  // 3. Animation ticks (slower while napping)
+  // 3. Animation ticks (faster during zoomies / dance)
   bool phaseAdvanced = false;
   unsigned long frameMs = FRAME_MS;
   if (pose == SLEEP) frameMs = FRAME_MS * 3;
+  else if (pose == ZOOMIES || pose == DANCE) frameMs = FRAME_MS * 2 / 3;
   if (currentMillis - lastFrameUpdate > frameMs) {
     animPhase = (animPhase + 1) & 3;
     animFrame = (animPhase & 1);
@@ -868,10 +1093,14 @@ void loop() {
   // 4. Idle wandering only while awake
   if (!wantsNap && currentMillis - lastIdleChange > IDLE_CHANGE_MS) {
     goofThought = random(8);
-    if (fun > 75 && food > 75 && random(2) == 0) {
-      idlePose = HAPPY;
+    if (fun > 75 && food > 75 && random(3) == 0) {
+      idlePose = DANCE;
     } else {
       idlePose = IDLE_CHOICES[random(IDLE_CHOICE_COUNT)];
+    }
+    // Zoom direction: bit0 = face/run right
+    if (idlePose == ZOOMIES) {
+      goofThought = (dogX < 64) ? 1 : 0;
     }
     lastIdleChange = currentMillis;
     rollChatter(currentMillis);
@@ -917,8 +1146,8 @@ void loop() {
   if (phaseAdvanced) {
     if (pose == WALK_R) {
       dogX += 1;
-      if (dogX > 96) {
-        dogX = 96;
+      if (dogX > 100) {
+        dogX = 100;
         idlePose = WALK_L;
         showingBonk = true;
         bonkUntil = currentMillis + 700;
@@ -933,10 +1162,29 @@ void loop() {
         bonkUntil = currentMillis + 700;
       }
       markDirty();
+    } else if (pose == ZOOMIES) {
+      int step = (goofThought & 1) ? 2 : -2;
+      dogX += step;
+      if (dogX > 100) {
+        dogX = 100;
+        goofThought &= ~1;
+        showingBonk = true;
+        bonkUntil = currentMillis + 500;
+      } else if (dogX < 0) {
+        dogX = 0;
+        goofThought |= 1;
+        showingBonk = true;
+        bonkUntil = currentMillis + 500;
+      }
+      markDirty();
+    } else if (pose == DANCE && animPhase == 0) {
+      dogX = constrain(dogX + (goofThought & 1 ? 2 : -2), 0, 100);
+    } else if (pose == SPIN && animPhase == 0) {
+      dogX = constrain(dogX + (random(2) ? 1 : -1), 0, 100);
     } else if (pose == HAPPY && animPhase == 0) {
-      dogX = constrain(dogX + (goofThought & 1 ? 1 : -1), 0, 96);
+      dogX = constrain(dogX + (goofThought & 1 ? 1 : -1), 0, 100);
     } else if (pose == SIT && animPhase == 0 && random(5) == 0) {
-      dogX = constrain(dogX + (random(2) ? 1 : -1), 0, 96);
+      dogX = constrain(dogX + (random(2) ? 1 : -1), 0, 100);
     }
   }
 
@@ -952,17 +1200,17 @@ void loop() {
   // Need gauges: auto when low, or triple-tap to inspect anytime
   bool showStats = (currentMillis < statsUntil);
   if (showStats || fun <= LOW_LEVEL) {
-    drawGauge(9, "MOVE", fun, fun <= CRITICAL_LEVEL && animFrame);
+    drawGauge(9, "BODY", fun, fun <= CRITICAL_LEVEL && animFrame);
   }
   if (showStats || food <= LOW_LEVEL) {
-    drawGauge(17, "H2O", food, food <= CRITICAL_LEVEL && animFrame);
+    drawGauge(17, "UNMASK", food, food <= CRITICAL_LEVEL && animFrame);
   }
   if (showStats) {
     drawCareGauge(25);
     display.setTextSize(1);
     display.setCursor(0, 34);
-    if (careStyle == STYLE_PLAYFUL) display.print(F("M"));
-    else if (careStyle == STYLE_CHONKY) display.print(F("S"));
+    if (careStyle == STYLE_PLAYFUL) display.print(F("C"));
+    else if (careStyle == STYLE_CHONKY) display.print(F("U"));
     else display.print(F("B"));
   }
 
@@ -1005,18 +1253,19 @@ void loop() {
       break;
 
     case WALK_R:
-      drawPet(x + tip[animPhase], y + hopBob[animPhase]);
+      // Small ground bob only — legs already animate in the sprite.
+      drawPet(x + tip[animPhase], y + ((animPhase & 1) ? 1 : 0));
       if (showingBonk) drawBonkStars(x, y);
       break;
 
     case WALK_L:
-      drawPet(x + tip[animPhase], y + hopBob[animPhase]);
+      drawPet(x + tip[animPhase], y + ((animPhase & 1) ? 1 : 0));
       if (showingBonk) drawBonkStars(x, y);
       break;
 
     case SLEEP: {
-      int breath = (animPhase <= 1) ? 0 : 1;
-      drawPet(x + ((animPhase == 3) ? 1 : 0), y + breath);
+      // Loaf rests on the floor; tiny side-to-side breath.
+      drawPet(x + ((animPhase == 3) ? 1 : 0), y + 2);
       break;
     }
 
@@ -1031,6 +1280,34 @@ void loop() {
     case HAPPY:
       drawPet(x + tip[animPhase], y + bigBob[animPhase]);
       if (animPhase & 1) drawHeart(x + 34, y - 3);
+      break;
+
+    case ZOOMIES:
+      drawPet(x + tip[animPhase], y + hopBob[animPhase]);
+      if (showingBonk) drawBonkStars(x, y);
+      break;
+
+    case SPIN:
+      drawPet(x + tip[animPhase] * 2, y + softBob[animPhase]);
+      if (animPhase == 0 || animPhase == 2) {
+        display.drawPixel(x + 14, y - 2, WHITE);
+        display.drawPixel(x + 18, y - 4, WHITE);
+      }
+      break;
+
+    case TIPOVER:
+      // Floppy tip — looks like it forgot gravity for a second.
+      drawPet(x + tip[animPhase] * 3, y + 4 + softBob[animPhase]);
+      break;
+
+    case SNIFF:
+      drawPet(x + ((animPhase & 1) ? 1 : 0), y + 5 + ((animPhase & 1) ? 1 : 0));
+      break;
+
+    case DANCE:
+      drawPet(x + tip[animPhase] * 2, y + bigBob[animPhase]);
+      if (animPhase & 1) drawHeart(x + 32, y - 4);
+      if (animPhase == 2) drawHeart(x - 2, y - 2);
       break;
 
     case PLAYING: {
